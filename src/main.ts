@@ -69,16 +69,13 @@ export default class DatacoreKanbanPlugin extends Plugin {
             // Initialize Datacore integration
             const initialized = await this.datacoreSync.initialize();
             if (initialized) {
-                console.log('Datacore Kanban Plugin loaded successfully');
             } else {
-                console.warn('Datacore Kanban Plugin loaded but Datacore integration failed');
             }
 
             // Register global events
             this.registerEvent(
                 this.app.workspace.on('datacore-kanban:refresh', () => {
                     // This event is triggered when the board needs to refresh
-                    console.debug('Kanban board refresh triggered');
                 })
             );
 
@@ -103,6 +100,11 @@ export default class DatacoreKanbanPlugin extends Plugin {
         }
     }
 
+    /**
+     * Activates the Kanban view based on user's placement preference.
+     * By default, opens in the main window instead of the sidebar.
+     * Users can change this behavior in settings.
+     */
     async activateView(): Promise<void> {
         const { workspace } = this.app;
 
@@ -114,13 +116,64 @@ export default class DatacoreKanbanPlugin extends Plugin {
                 // A kanban view is already open, focus it
                 leaf = leaves[0];
             } else {
-                // No kanban view, create a new one in the right sidebar
-                leaf = workspace.getRightLeaf(false);
-                if (leaf) {
-                    await leaf.setViewState({ 
-                        type: VIEW_TYPE_KANBAN, 
-                        active: true 
-                    });
+                // Create a new kanban view based on user preference
+                const placement = this.settings.viewPlacement;
+                
+                switch (placement) {
+                    case 'main':
+                        // Open in main window (active leaf or new tab)
+                        // Note: workspace.activeLeaf is a property in modern Obsidian (not getActiveLeaf() method)
+                        leaf = workspace.activeLeaf;
+                        if (leaf) {
+                            await leaf.setViewState({ 
+                                type: VIEW_TYPE_KANBAN, 
+                                active: true 
+                            });
+                        } else {
+                            // Fallback to new tab if no active leaf
+                            leaf = workspace.getLeaf('tab');
+                            if (leaf) {
+                                await leaf.setViewState({ 
+                                    type: VIEW_TYPE_KANBAN, 
+                                    active: true 
+                                });
+                            }
+                        }
+                        break;
+                        
+                    case 'new-tab':
+                        // Force new tab
+                        leaf = workspace.getLeaf('tab');
+                        if (leaf) {
+                            await leaf.setViewState({ 
+                                type: VIEW_TYPE_KANBAN, 
+                                active: true 
+                            });
+                        }
+                        break;
+                        
+                    case 'left-sidebar':
+                        // Open in left sidebar
+                        leaf = workspace.getLeftLeaf(false);
+                        if (leaf) {
+                            await leaf.setViewState({ 
+                                type: VIEW_TYPE_KANBAN, 
+                                active: true 
+                            });
+                        }
+                        break;
+                        
+                    case 'right-sidebar':
+                    default:
+                        // Open in right sidebar (original behavior)
+                        leaf = workspace.getRightLeaf(false);
+                        if (leaf) {
+                            await leaf.setViewState({ 
+                                type: VIEW_TYPE_KANBAN, 
+                                active: true 
+                            });
+                        }
+                        break;
                 }
             }
 

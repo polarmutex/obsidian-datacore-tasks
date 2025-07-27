@@ -38,7 +38,6 @@ export class TagManager {
             const updatedLine = this.updateLineWithTasksIntegration(originalLine, newStatusTag, taskMetadata);
             
             if (originalLine === updatedLine) {
-                console.log('No changes needed for task status');
                 return true;
             }
 

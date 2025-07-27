@@ -23,7 +23,6 @@ export class TasksPluginIntegration {
         if (this.tasksPlugin) {
             // Tasks plugin might expose an API - check for common patterns
             this.tasksApi = (this.tasksPlugin as any).api || null;
-            console.log('Tasks plugin detected and integrated');
         }
     }
 

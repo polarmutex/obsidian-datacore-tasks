@@ -5,6 +5,8 @@ export interface KanbanColumn {
     color: string;
 }
 
+export type ViewPlacement = 'main' | 'right-sidebar' | 'left-sidebar' | 'new-tab';
+
 export interface KanbanSettings {
     columns: KanbanColumn[];
     datacoreQuery: string;
@@ -13,6 +15,7 @@ export interface KanbanSettings {
     showDueDate: boolean;
     showPriority: boolean;
     showTags: boolean;
+    viewPlacement: ViewPlacement;
 }
 
 export const DEFAULT_SETTINGS: KanbanSettings = {
@@ -43,9 +46,10 @@ export const DEFAULT_SETTINGS: KanbanSettings = {
         }
     ],
     datacoreQuery: '@task',
-    refreshInterval: 5000,
+    refreshInterval: 0, // Disabled by default - use Datacore events
     cardMaxHeight: 200,
     showDueDate: true,
     showPriority: true,
-    showTags: true
+    showTags: true,
+    viewPlacement: 'main' // Open in main window by default
 };

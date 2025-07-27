@@ -29,16 +29,18 @@ export class KanbanSettingTab extends PluginSettingTab {
 
         // Refresh Interval Setting
         new Setting(containerEl)
-            .setName('Refresh Interval')
-            .setDesc('How often to refresh the kanban board (in milliseconds)')
+            .setName('Refresh Interval (Fallback)')
+            .setDesc('Auto-refresh interval in milliseconds. Set to 0 (recommended) to use Datacore\'s intelligent change tracking instead of polling. Only used as fallback when Datacore events fail.')
             .addText(text => text
-                .setPlaceholder('5000')
+                .setPlaceholder('0 (use Datacore events)')
                 .setValue(this.plugin.settings.refreshInterval.toString())
                 .onChange(async (value) => {
                     const interval = parseInt(value);
-                    if (!isNaN(interval) && interval > 0) {
+                    if (!isNaN(interval) && interval >= 0) {
                         this.plugin.settings.refreshInterval = interval;
                         await this.plugin.saveSettings();
+                        // Trigger settings change event
+                        this.app.workspace.trigger('datacore-kanban:settings-changed');
                     }
                 }));
 
@@ -87,6 +89,21 @@ export class KanbanSettingTab extends PluginSettingTab {
                 .setValue(this.plugin.settings.showTags)
                 .onChange(async (value) => {
                     this.plugin.settings.showTags = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        // View Placement Setting
+        new Setting(containerEl)
+            .setName('View Placement')
+            .setDesc('Choose where to open the Kanban board when clicking the ribbon icon')
+            .addDropdown(dropdown => dropdown
+                .addOption('main', 'Main Window (Replace current note)')
+                .addOption('new-tab', 'New Tab')
+                .addOption('right-sidebar', 'Right Sidebar')
+                .addOption('left-sidebar', 'Left Sidebar')
+                .setValue(this.plugin.settings.viewPlacement)
+                .onChange(async (value) => {
+                    this.plugin.settings.viewPlacement = value as any;
                     await this.plugin.saveSettings();
                 }));
 

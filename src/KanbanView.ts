@@ -126,7 +126,7 @@ export class KanbanView extends ItemView {
 
             await this.kanbanBoard.render();
 
-            // Set up auto-refresh
+            // Set up auto-refresh (only as fallback)
             this.setupAutoRefresh();
 
             // Update status
@@ -151,7 +151,7 @@ export class KanbanView extends ItemView {
         // Listen for settings changes
         const settingsHandler = () => {
             this.refreshBoard();
-            this.setupAutoRefresh(); // Update refresh interval
+            this.setupAutoRefresh(); // Update refresh strategy
         };
 
         this.eventRefs.push({
@@ -168,11 +168,13 @@ export class KanbanView extends ItemView {
             this.refreshInterval = null;
         }
 
-        // Set up new interval if enabled
-        if (this.plugin.settings.refreshInterval > 0) {
+        // Only set up auto-refresh as fallback if Datacore events fail
+        // Default behavior is now event-driven via Datacore
+        if (this.plugin.settings.refreshInterval > 0 && !this.plugin.isDatacoreReady) {
             this.refreshInterval = window.setInterval(() => {
                 this.refreshBoard();
             }, this.plugin.settings.refreshInterval);
+        } else if (this.plugin.settings.refreshInterval > 0) {
         }
     }
 

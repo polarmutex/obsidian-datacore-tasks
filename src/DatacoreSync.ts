@@ -1,5 +1,5 @@
 import { App, TFile, Notice, EventRef } from 'obsidian';
-import { DatacoreApi, Literal, Query, DataObject } from '@blacksmithgu/datacore';
+import { DatacoreApi, Literal, DataObject } from '@blacksmithgu/datacore';
 import DatacoreKanbanPlugin from './main';
 
 export interface TaskItem {
@@ -27,6 +27,9 @@ export class DatacoreSync {
     constructor(app: App, plugin: DatacoreKanbanPlugin) {
         this.app = app;
         this.plugin = plugin;
+        
+        // Monitor Datacore integration health
+        this.monitorDatacoreHealth();
     }
 
     async initialize(): Promise<boolean> {
@@ -69,7 +72,8 @@ export class DatacoreSync {
     private setupEventListeners(): void {
         if (!this.datacoreApi) return;
 
-        // Listen for Datacore index changes (with safety check)
+
+        // Listen for Datacore index changes - primary method
         if (this.datacoreApi.index && typeof this.datacoreApi.index.on === 'function') {
             try {
                 const indexRef = this.datacoreApi.index.on('update', () => {
@@ -78,6 +82,7 @@ export class DatacoreSync {
                 
                 if (indexRef) {
                     this.eventRefs.push(indexRef);
+                } else {
                 }
             } catch (error) {
                 console.warn('Failed to setup Datacore index listener:', error);
@@ -86,14 +91,34 @@ export class DatacoreSync {
             console.warn('Datacore API does not have index.on method available');
         }
 
-        // Listen for file changes as backup
+        // Listen for task-specific file changes only as targeted backup
         const vaultRef = this.app.vault.on('modify', (file) => {
+            if (file instanceof TFile && file.extension === 'md') {
+                // Only trigger refresh if the file likely contains tasks
+                this.checkFileForTasks(file).then(hasTasks => {
+                    if (hasTasks) {
+                        this.debounceRefresh();
+                    }
+                });
+            }
+        });
+        
+        this.eventRefs.push(vaultRef);
+
+        // Listen for file creation/deletion that might affect tasks
+        const createRef = this.app.vault.on('create', (file) => {
             if (file instanceof TFile && file.extension === 'md') {
                 this.debounceRefresh();
             }
         });
         
-        this.eventRefs.push(vaultRef);
+        const deleteRef = this.app.vault.on('delete', (file) => {
+            if (file instanceof TFile && file.extension === 'md') {
+                this.debounceRefresh();
+            }
+        });
+        
+        this.eventRefs.push(createRef, deleteRef);
     }
 
     private debounceRefresh(): void {
@@ -104,7 +129,7 @@ export class DatacoreSync {
         this.debounceTimer = window.setTimeout(() => {
             this.app.workspace.trigger('datacore-kanban:refresh');
             this.debounceTimer = null;
-        }, 500);
+        }, 300); // Reduced debounce time since we're more selective about triggers
     }
 
     async getTasks(): Promise<TaskItem[]> {
@@ -120,17 +145,12 @@ export class DatacoreSync {
             // Fallback to simple @task if query seems problematic
             if (!queryText || queryText.includes('TABLE') || queryText.includes('TASK WHERE') || queryText.includes('$completed = false')) {
                 queryText = '@task';
-                console.log('Using fallback query due to invalid syntax, original was:', this.plugin.settings.datacoreQuery);
             }
             
-            console.log('Executing Datacore query:', queryText);
             const query = await this.datacoreApi.query(queryText);
-            console.log('Datacore query response type:', typeof query);
-            console.log('Datacore query response:', query);
             
             // Handle case where query returns array directly (like simple @task)
             if (Array.isArray(query)) {
-                console.log('Query returned array directly with', query.length, 'items');
                 const tasks: TaskItem[] = [];
                 for (const item of query) {
                     const task = await this.parseTaskFromListItem(item);
@@ -149,12 +169,10 @@ export class DatacoreSync {
 
             const tasks: TaskItem[] = [];
             const result = query.value;
-            console.log('Query result structure:', result);
 
             // Handle different result types
             if (Array.isArray(result)) {
                 // Direct array of task objects
-                console.log('Processing array result with', result.length, 'items');
                 for (const item of result) {
                     const task = await this.parseTaskFromListItem(item);
                     if (task) {
@@ -162,7 +180,6 @@ export class DatacoreSync {
                     }
                 }
             } else if (result.type === 'table') {
-                console.log('Processing table result');
                 for (const row of result.data.values) {
                     const task = await this.parseTaskFromTableRow(row, result.data.headers);
                     if (task) {
@@ -170,7 +187,6 @@ export class DatacoreSync {
                     }
                 }
             } else if (result.type === 'list') {
-                console.log('Processing list result');
                 for (const item of result.data) {
                     const task = await this.parseTaskFromListItem(item);
                     if (task) {
@@ -206,7 +222,6 @@ export class DatacoreSync {
 
     private async parseTaskFromListItem(item: Literal): Promise<TaskItem | null> {
         try {
-            console.log('Parsing task item:', item);
             if (typeof item === 'object' && item !== null) {
                 // Check if this is a _MarkdownTaskItem (Datacore specific)
                 if ((item as any).constructor?.name === '_MarkdownTaskItem') {
@@ -215,7 +230,6 @@ export class DatacoreSync {
                 // Fallback to generic data parsing
                 return this.createTaskFromData(item as Record<string, Literal>);
             }
-            console.log('Item is not a valid object:', typeof item, item);
             return null;
         } catch (error) {
             console.error('Error parsing task from list item:', error);
@@ -225,14 +239,10 @@ export class DatacoreSync {
 
     private async createTaskFromData(data: Record<string, Literal>): Promise<TaskItem | null> {
         try {
-            console.log('Creating task from data:', data);
-            
             // Extract file information
             const fileData = data.file || data.path;
-            console.log('File data found:', fileData);
             
             if (!fileData || typeof fileData !== 'object' || !('path' in fileData)) {
-                console.log('Invalid file data structure');
                 return null;
             }
 
@@ -327,14 +337,12 @@ export class DatacoreSync {
 
     private async createTaskFromMarkdownTaskItem(taskItem: any): Promise<TaskItem | null> {
         try {
-            console.log('Creating task from _MarkdownTaskItem:', taskItem);
             
             // Extract properties using Datacore's $ prefixed properties
             const text = taskItem.$text || taskItem.$cleantext || taskItem.text || '';
             
             // Skip empty tasks
             if (!text || text.trim() === '') {
-                console.log('Skipping empty task');
                 return null;
             }
             
@@ -344,13 +352,11 @@ export class DatacoreSync {
             // Get file path and convert to TFile object
             const filePath = taskItem.$file;
             if (!filePath) {
-                console.log('No $file property found in task item');
                 return null;
             }
             
             const file = this.app.vault.getAbstractFileByPath(filePath);
             if (!(file instanceof TFile)) {
-                console.log('Could not find file:', filePath);
                 return null;
             }
             
@@ -367,7 +373,6 @@ export class DatacoreSync {
             // Generate unique ID using the Datacore ID or fallback
             const id = taskItem.$id || `${filePath}:${line}`;
             
-            console.log('Parsed task:', { id, text, completed, status, file: filePath, line, tags });
             
             return {
                 id,
@@ -447,6 +452,17 @@ export class DatacoreSync {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
+    private async checkFileForTasks(file: TFile): Promise<boolean> {
+        try {
+            const content = await this.app.vault.read(file);
+            // Quick check for task patterns without full parsing
+            return content.includes('- [ ]') || content.includes('- [x]') || content.includes('- [X]');
+        } catch (error) {
+            console.error('Error checking file for tasks:', error);
+            return false;
+        }
+    }
+
     // Public getters for external access
     get isReady(): boolean {
         return this.isInitialized && this.datacoreApi !== null;
@@ -454,5 +470,13 @@ export class DatacoreSync {
 
     get api(): DatacoreApi | null {
         return this.datacoreApi;
+    }
+
+    private monitorDatacoreHealth(): void {
+        // Simple health check - just verify Datacore is available
+        // Complex monitoring removed to reduce overhead
+        if (!this.datacoreApi && this.plugin.settings.refreshInterval === 0) {
+            console.warn('Datacore integration may not be working properly');
+        }
     }
 }
