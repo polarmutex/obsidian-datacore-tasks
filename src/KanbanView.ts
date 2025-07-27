@@ -1,7 +1,8 @@
-import { ItemView, WorkspaceLeaf } from 'obsidian';
+import { ItemView, WorkspaceLeaf, Notice } from 'obsidian';
 import type { App as ObsidianApp } from 'obsidian-typings';
 import DatacoreKanbanPlugin from './main';
-import { KanbanBoard } from './KanbanBoard';
+// Legacy import - will be removed in future version
+import { KanbanBoard } from './legacy/KanbanBoard';
 
 export const VIEW_TYPE_KANBAN = 'datacore-kanban-view';
 
@@ -35,6 +36,9 @@ export class KanbanView extends ItemView {
         container.empty();
         container.addClass('kanban-view-container');
 
+        // Show deprecation warning
+        this.showDeprecationWarning(container);
+
         try {
             // Create header
             await this.createHeader(container);
@@ -66,6 +70,44 @@ export class KanbanView extends ItemView {
             console.error('Failed to open Kanban view:', error);
             this.showErrorState(container, 'Failed to initialize Kanban board');
         }
+    }
+
+    private showDeprecationWarning(container: HTMLElement): void {
+        const warning = container.createEl('div', { cls: 'kanban-deprecation-warning' });
+        warning.innerHTML = `
+            <div class="kanban-warning-content">
+                <div class="kanban-warning-icon">⚠️</div>
+                <div class="kanban-warning-text">
+                    <strong>Legacy Kanban View</strong><br>
+                    This is the legacy TypeScript implementation. 
+                    Switch to the new JavaScript view for better performance and features.
+                </div>
+                <div class="kanban-warning-actions">
+                    <button class="kanban-switch-js">Use JavaScript View</button>
+                    <button class="kanban-dismiss">Dismiss</button>
+                </div>
+            </div>
+        `;
+
+        const switchButton = warning.querySelector('.kanban-switch-js') as HTMLButtonElement;
+        const dismissButton = warning.querySelector('.kanban-dismiss') as HTMLButtonElement;
+
+        if (switchButton) {
+            switchButton.onclick = async () => {
+                // Switch to JavaScript view
+                await this.plugin.activateJavaScriptView();
+                warning.remove();
+            };
+        }
+
+        if (dismissButton) {
+            dismissButton.onclick = () => {
+                warning.remove();
+            };
+        }
+
+        // Show notice as well
+        new Notice('This Kanban view is deprecated. Use the JavaScript view for better performance.', 5000);
     }
 
     private async createHeader(container: HTMLElement): Promise<void> {

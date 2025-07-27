@@ -4,6 +4,7 @@ A dynamic kanban board plugin for Obsidian that integrates with Datacore queries
 
 ## Features
 
+### Core Functionality
 - 🎯 **Dynamic Kanban Board**: Auto-populated from Datacore queries
 - 🏷️ **Tag-Based Columns**: Organize tasks by status tags (#todo, #doing, #waiting, #done)
 - 🎨 **Drag & Drop**: Move tasks between columns by dragging cards
@@ -11,6 +12,14 @@ A dynamic kanban board plugin for Obsidian that integrates with Datacore queries
 - 📱 **Mobile Friendly**: Responsive design for mobile and desktop
 - ⚙️ **Configurable**: Customizable columns, colors, and queries
 - 🔗 **Tasks Plugin Integration**: Compatible with Tasks plugin format
+
+### Advanced Features (JavaScript View)
+- 🔍 **Advanced Search**: Full-text search across tasks, files, and tags
+- 🎛️ **Smart Filtering**: Filter by status, due dates, and custom criteria
+- ✅ **Bulk Operations**: Select and modify multiple tasks at once
+- ⌨️ **Keyboard Shortcuts**: Full keyboard navigation and control
+- ⚡ **Real-time Updates**: Native Datacore integration for instant updates
+- 🎨 **Enhanced UI**: Modern interface with improved accessibility
 
 ## Requirements
 
@@ -48,9 +57,17 @@ A dynamic kanban board plugin for Obsidian that integrates with Datacore queries
 
 ### Opening the Kanban Board
 
-- Click the grid icon in the ribbon
-- Use the command palette: "Open Kanban Board"
-- The board will open in the right sidebar by default
+#### JavaScript View (Recommended)
+- **Command**: "Open JavaScript Kanban Board"
+- **Shortcut**: `Ctrl+Shift+J` / `Cmd+Shift+J`
+- Native Datacore integration with enhanced features
+
+#### Legacy TypeScript View
+- **Command**: "Open Kanban Board" 
+- **Shortcut**: `Ctrl+Shift+K` / `Cmd+Shift+K`
+- Classic implementation (deprecated)
+
+The board will open in the main workspace by default (configurable in settings).
 
 ### Configuring Columns
 
@@ -79,6 +96,27 @@ Tasks should be in markdown format with status tags:
 - **In Progress** (#doing) - Teal  
 - **Waiting** (#waiting) - Yellow
 - **Done** (#done) - Blue
+
+### JavaScript View Features
+
+#### Search and Filtering
+- **Global Search**: Search across task text, file names, and tags
+- **Status Filters**: Show only completed, pending, overdue, or due today
+- **Combined Filters**: Use search and filters together
+
+#### Bulk Operations
+1. **Select Tasks**: Use checkboxes or Ctrl+Click
+2. **Select All**: `Ctrl+A` / `Cmd+A` for all visible tasks
+3. **Bulk Actions**: Complete, uncomplete, or delete selected tasks
+
+#### Keyboard Shortcuts
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+F` / `Cmd+F` | Focus search |
+| `Ctrl+A` / `Cmd+A` | Select all visible |
+| `Enter` | Complete selected |
+| `Delete` | Delete selected |
+| `Escape` | Clear search/selection |
 
 ## Configuration
 

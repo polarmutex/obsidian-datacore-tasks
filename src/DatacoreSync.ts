@@ -34,10 +34,17 @@ export class DatacoreSync {
 
     async initialize(): Promise<boolean> {
         try {
+            console.log('Initializing Datacore integration...');
+            
             // Try to get Datacore API directly from the plugin
             const datacorePlugin = this.app.plugins.plugins['datacore'];
+            console.log('Datacore plugin found:', !!datacorePlugin);
+            console.log('Datacore API available:', !!datacorePlugin?.api);
+            
             if (datacorePlugin?.api) {
                 this.datacoreApi = datacorePlugin.api as DatacoreApi;
+                console.log('Datacore API initialized successfully');
+                console.log('API methods available:', Object.keys(this.datacoreApi));
                 this.setupEventListeners();
                 this.isInitialized = true;
                 return true;
@@ -72,23 +79,57 @@ export class DatacoreSync {
     private setupEventListeners(): void {
         if (!this.datacoreApi) return;
 
-
-        // Listen for Datacore index changes - primary method
-        if (this.datacoreApi.index && typeof this.datacoreApi.index.on === 'function') {
-            try {
-                const indexRef = this.datacoreApi.index.on('update', () => {
-                    this.debounceRefresh();
-                });
-                
-                if (indexRef) {
-                    this.eventRefs.push(indexRef);
-                } else {
+        // Try different Datacore event approaches
+        try {
+            // Method 1: Check if Datacore has a workspacePlugin or events
+            if (this.datacoreApi.workspacePlugin) {
+                console.log('Found Datacore workspacePlugin');
+                // Listen for index updates via workspace plugin
+                const workspaceEvents = this.datacoreApi.workspacePlugin;
+                if (workspaceEvents.on) {
+                    const eventRef = workspaceEvents.on('index-update', () => {
+                        this.debounceRefresh();
+                    });
+                    if (eventRef) this.eventRefs.push(eventRef);
                 }
-            } catch (error) {
-                console.warn('Failed to setup Datacore index listener:', error);
             }
-        } else {
-            console.warn('Datacore API does not have index.on method available');
+            
+            // Method 2: Check for direct index events  
+            else if (this.datacoreApi.index) {
+                console.log('Found Datacore index');
+                const index = this.datacoreApi.index;
+                
+                // Try modern event listener pattern
+                if (typeof index.addEventListener === 'function') {
+                    const listener = () => this.debounceRefresh();
+                    index.addEventListener('update', listener);
+                    this.eventRefs.push({
+                        off: () => index.removeEventListener('update', listener)
+                    });
+                }
+                // Try legacy event pattern
+                else if (typeof index.on === 'function') {
+                    const eventRef = index.on('update', () => this.debounceRefresh());
+                    if (eventRef) this.eventRefs.push(eventRef);
+                }
+            }
+            
+            // Method 3: Check for app-level Datacore events
+            else if ((this.app as any).plugins?.plugins?.datacore?.events) {
+                console.log('Found Datacore app events');
+                const datacoreEvents = (this.app as any).plugins.plugins.datacore.events;
+                if (datacoreEvents.on) {
+                    const eventRef = datacoreEvents.on('index-changed', () => {
+                        this.debounceRefresh();
+                    });
+                    if (eventRef) this.eventRefs.push(eventRef);
+                }
+            }
+            
+            console.log('Datacore event listeners setup complete');
+            
+        } catch (error) {
+            console.warn('Failed to setup Datacore event listeners:', error);
         }
 
         // Listen for task-specific file changes only as targeted backup
@@ -475,8 +516,21 @@ export class DatacoreSync {
     private monitorDatacoreHealth(): void {
         // Simple health check - just verify Datacore is available
         // Uses event-driven updates instead of polling
-        if (!this.datacoreApi) {
-            console.warn('Datacore integration may not be working properly - check if Datacore plugin is installed and enabled');
-        }
+        setTimeout(() => {
+            if (!this.datacoreApi) {
+                console.warn('Datacore integration may not be working properly - check if Datacore plugin is installed and enabled');
+                console.log('Available plugins:', Object.keys(this.app.plugins.plugins));
+                
+                const datacorePlugin = this.app.plugins.plugins['datacore'];
+                if (datacorePlugin) {
+                    console.log('Datacore plugin is available but API is not ready');
+                    console.log('Datacore plugin properties:', Object.keys(datacorePlugin));
+                } else {
+                    console.log('Datacore plugin is not found - please install and enable the Datacore plugin');
+                }
+            } else {
+                console.log('Datacore integration is healthy');
+            }
+        }, 2000); // Check after 2 seconds to allow plugins to load
     }
 }

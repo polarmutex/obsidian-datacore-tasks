@@ -1,5 +1,207 @@
 /* Obsidian Datacore Kanban Plugin Styles */
 
+/* JavaScript View Styles */
+.js-kanban-view-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.js-kanban-header {
+  padding: 16px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+}
+
+.js-kanban-title {
+  margin: 0 0 4px 0;
+  font-size: 1.25em;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.js-kanban-subtitle {
+  margin: 0;
+  font-size: 0.9em;
+  color: var(--text-muted);
+}
+
+.js-kanban-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.js-kanban-search input {
+  padding: 6px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  min-width: 200px;
+}
+
+.js-kanban-filter {
+  padding: 6px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.js-kanban-stats {
+  margin-left: auto;
+  font-size: 0.9em;
+  color: var(--text-muted);
+}
+
+.js-kanban-board {
+  flex: 1;
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.js-kanban-column {
+  min-width: 280px;
+  background: var(--background-primary);
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  display: flex;
+  flex-direction: column;
+}
+
+.js-kanban-column-header {
+  padding: 12px 16px;
+  border-radius: 8px 8px 0 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.js-kanban-column-title {
+  margin: 0;
+  font-size: 1em;
+  font-weight: 600;
+  color: white;
+}
+
+.js-kanban-task-count {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 0.8em;
+  font-weight: 500;
+}
+
+.js-kanban-column-content {
+  flex: 1;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.js-kanban-task-card {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.js-kanban-task-card:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--interactive-accent);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.js-task-text {
+  font-size: 0.9em;
+  line-height: 1.4;
+  color: var(--text-normal);
+  margin-bottom: 8px;
+}
+
+.js-task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 0.8em;
+  color: var(--text-muted);
+}
+
+.js-task-file {
+  background: var(--background-modifier-border);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: var(--font-monospace);
+}
+
+.js-task-due {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.js-task-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.js-task-tag {
+  background: var(--tag-background);
+  color: var(--tag-color);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.75em;
+}
+
+.js-kanban-empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 24px;
+}
+
+.js-kanban-error {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-muted);
+}
+
+.js-kanban-error .error-icon {
+  font-size: 2em;
+  margin-bottom: 8px;
+}
+
+.js-kanban-error .error-message {
+  margin-bottom: 12px;
+}
+
+.js-kanban-error button {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+/* Legacy View Styles */
+
 /* Main container */
 .kanban-view-container {
   height: 100%;

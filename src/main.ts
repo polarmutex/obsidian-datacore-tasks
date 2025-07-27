@@ -1,6 +1,7 @@
 import { Plugin, WorkspaceLeaf } from 'obsidian';
 import type { App as ObsidianApp } from 'obsidian-typings';
 import { KanbanView, VIEW_TYPE_KANBAN } from './KanbanView';
+import { JavaScriptKanbanView, VIEW_TYPE_JS_KANBAN } from './JavaScriptKanbanView';
 import { DatacoreSync } from './DatacoreSync';
 import { TagManager } from './TagManager';
 import { KanbanSettings, DEFAULT_SETTINGS } from './Settings';
@@ -25,10 +26,15 @@ export default class DatacoreKanbanPlugin extends Plugin {
             this.datacoreSync = new DatacoreSync(this.app, this);
             this.tagManager = new TagManager(this.app, this.datacoreSync);
 
-            // Register the kanban view
+            // Register both legacy and JavaScript kanban views
             this.registerView(
                 VIEW_TYPE_KANBAN,
                 (leaf: WorkspaceLeaf) => new KanbanView(leaf, this)
+            );
+            
+            this.registerView(
+                VIEW_TYPE_JS_KANBAN,
+                (leaf: WorkspaceLeaf) => new JavaScriptKanbanView(leaf, this)
             );
 
             // Add ribbon icon with proper typing
@@ -52,6 +58,25 @@ export default class DatacoreKanbanPlugin extends Plugin {
                     }
                 ]
             });
+
+            // Add command for JavaScript Kanban Board
+            console.log('Registering JavaScript Kanban Board command...');
+            this.addCommand({
+                id: 'open-js-kanban-board',
+                name: 'Open JavaScript Kanban Board',
+                icon: 'layout-grid',
+                callback: () => {
+                    console.log('JavaScript Kanban Board command executed');
+                    this.activateJavaScriptView();
+                },
+                hotkeys: [
+                    {
+                        modifiers: ['Mod', 'Shift'],
+                        key: 'j'
+                    }
+                ]
+            });
+            console.log('JavaScript Kanban Board command registered successfully');
 
             // Add command to refresh board
             this.addCommand({
@@ -91,9 +116,10 @@ export default class DatacoreKanbanPlugin extends Plugin {
             // Cleanup services
             this.datacoreSync?.cleanup();
             
-            // Close any open kanban views
-            const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_KANBAN);
-            leaves.forEach(leaf => leaf.detach());
+            // Close any open kanban views (both legacy and JavaScript)
+            const legacyLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_KANBAN);
+            const jsLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_JS_KANBAN);
+            [...legacyLeaves, ...jsLeaves].forEach(leaf => leaf.detach());
             
         } catch (error) {
             console.error('Error during plugin unload:', error);
@@ -183,6 +209,84 @@ export default class DatacoreKanbanPlugin extends Plugin {
             }
         } catch (error) {
             console.error('Failed to activate kanban view:', error);
+        }
+    }
+
+    /**
+     * Activates the JavaScript Kanban view based on user's placement preference.
+     */
+    async activateJavaScriptView(): Promise<void> {
+        const { workspace } = this.app;
+
+        try {
+            let leaf: WorkspaceLeaf | null = null;
+            const leaves = workspace.getLeavesOfType(VIEW_TYPE_JS_KANBAN);
+
+            if (leaves.length > 0) {
+                // A JS kanban view is already open, focus it
+                leaf = leaves[0];
+            } else {
+                // Create a new JavaScript kanban view based on user preference
+                const placement = this.settings.viewPlacement;
+                
+                switch (placement) {
+                    case 'main':
+                        leaf = workspace.activeLeaf;
+                        if (leaf) {
+                            await leaf.setViewState({ 
+                                type: VIEW_TYPE_JS_KANBAN, 
+                                active: true 
+                            });
+                        } else {
+                            leaf = workspace.getLeaf('tab');
+                            if (leaf) {
+                                await leaf.setViewState({ 
+                                    type: VIEW_TYPE_JS_KANBAN, 
+                                    active: true 
+                                });
+                            }
+                        }
+                        break;
+                        
+                    case 'new-tab':
+                        leaf = workspace.getLeaf('tab');
+                        if (leaf) {
+                            await leaf.setViewState({ 
+                                type: VIEW_TYPE_JS_KANBAN, 
+                                active: true 
+                            });
+                        }
+                        break;
+                        
+                    case 'left-sidebar':
+                        leaf = workspace.getLeftLeaf(false);
+                        if (leaf) {
+                            await leaf.setViewState({ 
+                                type: VIEW_TYPE_JS_KANBAN, 
+                                active: true 
+                            });
+                        }
+                        break;
+                        
+                    case 'right-sidebar':
+                    default:
+                        leaf = workspace.getRightLeaf(false);
+                        if (leaf) {
+                            await leaf.setViewState({ 
+                                type: VIEW_TYPE_JS_KANBAN, 
+                                active: true 
+                            });
+                        }
+                        break;
+                }
+            }
+
+            // Focus the leaf
+            if (leaf) {
+                workspace.revealLeaf(leaf);
+            }
+        } catch (error) {
+            console.error('Failed to activate JavaScript kanban view:', error);
         }
     }
 
