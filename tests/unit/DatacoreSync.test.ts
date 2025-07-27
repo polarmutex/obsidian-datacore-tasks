@@ -44,7 +44,7 @@ describe('DatacoreSync', () => {
     
     mockPlugin = {
       settings: {
-        datacoreQuery: '@task and $completed = false'
+        datacoreQuery: '@task'
       },
       registerEvent: jest.fn(),
       loadData: jest.fn().mockResolvedValue({}),

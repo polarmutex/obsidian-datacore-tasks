@@ -22,7 +22,7 @@ describe('Real Datacore Integration', () => {
     
     mockPlugin = {
       settings: {
-        datacoreQuery: '@task and $completed = false',
+        datacoreQuery: '@task',
         refreshInterval: 1000
       },
       registerEvent: jest.fn(),

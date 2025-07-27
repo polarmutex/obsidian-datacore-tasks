@@ -115,11 +115,33 @@ export class DatacoreSync {
 
         try {
             // Use Datacore's query API
-            const queryText = this.plugin.settings.datacoreQuery;
+            let queryText = this.plugin.settings.datacoreQuery;
+            
+            // Fallback to simple @task if query seems problematic
+            if (!queryText || queryText.includes('TABLE') || queryText.includes('TASK WHERE') || queryText.includes('$completed = false')) {
+                queryText = '@task';
+                console.log('Using fallback query due to invalid syntax, original was:', this.plugin.settings.datacoreQuery);
+            }
+            
             console.log('Executing Datacore query:', queryText);
             const query = await this.datacoreApi.query(queryText);
+            console.log('Datacore query response type:', typeof query);
             console.log('Datacore query response:', query);
             
+            // Handle case where query returns array directly (like simple @task)
+            if (Array.isArray(query)) {
+                console.log('Query returned array directly with', query.length, 'items');
+                const tasks: TaskItem[] = [];
+                for (const item of query) {
+                    const task = await this.parseTaskFromListItem(item);
+                    if (task) {
+                        tasks.push(task);
+                    }
+                }
+                return tasks;
+            }
+            
+            // Handle wrapped response with successful/value structure
             if (!query?.successful || !query.value) {
                 console.warn('Datacore query failed or returned no results', query);
                 return [];
@@ -130,7 +152,17 @@ export class DatacoreSync {
             console.log('Query result structure:', result);
 
             // Handle different result types
-            if (result.type === 'table') {
+            if (Array.isArray(result)) {
+                // Direct array of task objects
+                console.log('Processing array result with', result.length, 'items');
+                for (const item of result) {
+                    const task = await this.parseTaskFromListItem(item);
+                    if (task) {
+                        tasks.push(task);
+                    }
+                }
+            } else if (result.type === 'table') {
+                console.log('Processing table result');
                 for (const row of result.data.values) {
                     const task = await this.parseTaskFromTableRow(row, result.data.headers);
                     if (task) {
@@ -138,12 +170,15 @@ export class DatacoreSync {
                     }
                 }
             } else if (result.type === 'list') {
+                console.log('Processing list result');
                 for (const item of result.data) {
                     const task = await this.parseTaskFromListItem(item);
                     if (task) {
                         tasks.push(task);
                     }
                 }
+            } else {
+                console.warn('Unknown result format:', typeof result, result);
             }
 
             return tasks;
@@ -171,9 +206,16 @@ export class DatacoreSync {
 
     private async parseTaskFromListItem(item: Literal): Promise<TaskItem | null> {
         try {
-            if (typeof item === 'object' && item !== null && 'file' in item) {
+            console.log('Parsing task item:', item);
+            if (typeof item === 'object' && item !== null) {
+                // Check if this is a _MarkdownTaskItem (Datacore specific)
+                if ((item as any).constructor?.name === '_MarkdownTaskItem') {
+                    return this.createTaskFromMarkdownTaskItem(item as any);
+                }
+                // Fallback to generic data parsing
                 return this.createTaskFromData(item as Record<string, Literal>);
             }
+            console.log('Item is not a valid object:', typeof item, item);
             return null;
         } catch (error) {
             console.error('Error parsing task from list item:', error);
@@ -183,9 +225,14 @@ export class DatacoreSync {
 
     private async createTaskFromData(data: Record<string, Literal>): Promise<TaskItem | null> {
         try {
+            console.log('Creating task from data:', data);
+            
             // Extract file information
             const fileData = data.file || data.path;
+            console.log('File data found:', fileData);
+            
             if (!fileData || typeof fileData !== 'object' || !('path' in fileData)) {
+                console.log('Invalid file data structure');
                 return null;
             }
 
@@ -275,6 +322,69 @@ export class DatacoreSync {
         } catch (error) {
             console.error('Error reading file:', error);
             return -1;
+        }
+    }
+
+    private async createTaskFromMarkdownTaskItem(taskItem: any): Promise<TaskItem | null> {
+        try {
+            console.log('Creating task from _MarkdownTaskItem:', taskItem);
+            
+            // Extract properties using Datacore's $ prefixed properties
+            const text = taskItem.$text || taskItem.$cleantext || taskItem.text || '';
+            
+            // Skip empty tasks
+            if (!text || text.trim() === '') {
+                console.log('Skipping empty task');
+                return null;
+            }
+            
+            const completed = taskItem.$completed ?? (taskItem.$status === 'x' || taskItem.$status === 'X');
+            const status = completed ? 'done' : 'todo';
+            
+            // Get file path and convert to TFile object
+            const filePath = taskItem.$file;
+            if (!filePath) {
+                console.log('No $file property found in task item');
+                return null;
+            }
+            
+            const file = this.app.vault.getAbstractFileByPath(filePath);
+            if (!(file instanceof TFile)) {
+                console.log('Could not find file:', filePath);
+                return null;
+            }
+            
+            // Get the line number
+            const line = taskItem.$line ?? taskItem.$position?.start ?? 0;
+            
+            // Extract tags
+            const tags = taskItem.$tags || this.extractTagsFromText(text);
+            
+            // Extract other metadata if available
+            const dueDate = taskItem.due || taskItem.dueDate;
+            const priority = taskItem.priority;
+            
+            // Generate unique ID using the Datacore ID or fallback
+            const id = taskItem.$id || `${filePath}:${line}`;
+            
+            console.log('Parsed task:', { id, text, completed, status, file: filePath, line, tags });
+            
+            return {
+                id,
+                text,
+                file,
+                line,
+                tags,
+                dueDate,
+                priority,
+                status,
+                completed,
+                metadata: taskItem,
+                dataObject: taskItem
+            };
+        } catch (error) {
+            console.error('Error creating task from _MarkdownTaskItem:', error);
+            return null;
         }
     }
 

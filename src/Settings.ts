@@ -42,7 +42,7 @@ export const DEFAULT_SETTINGS: KanbanSettings = {
             color: '#45b7d1'
         }
     ],
-    datacoreQuery: '@task and $completed = false',
+    datacoreQuery: '@task',
     refreshInterval: 5000,
     cardMaxHeight: 200,
     showDueDate: true,

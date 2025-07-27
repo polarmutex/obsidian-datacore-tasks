@@ -87,13 +87,13 @@ Tasks should be in markdown format with status tags:
 The default query fetches all tasks:
 
 ```datacore
-@task and $completed = false
+@task
 ```
 
 You can customize this query to:
 - Filter by tags: `@task and #work`
+- Filter incomplete tasks: `@task and $completed = false`
 - Include specific paths: `@task and path("Projects")`
-- Include completed tasks: `@task`
 
 ### Settings Options
 
