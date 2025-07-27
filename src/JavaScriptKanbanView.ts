@@ -130,6 +130,9 @@ export class JavaScriptKanbanView extends ItemView {
 
         // Set up keyboard shortcuts
         this.setupKeyboardShortcuts(container, searchInput);
+
+        // Add drag indicator
+        this.addDragIndicator(container);
     }
 
     private async loadAndDisplayTasks(boardContainer: HTMLElement, stats: HTMLElement, datacoreApi: any): Promise<void> {
@@ -198,6 +201,9 @@ export class JavaScriptKanbanView extends ItemView {
             // Add task count to header
             header.createEl('span', { text: columnTasks.length.toString(), cls: 'js-kanban-task-count' });
             
+            // Setup drop zone for the column
+            this.setupColumnDropZone(content, column);
+            
             // Create task cards
             columnTasks.forEach(task => {
                 this.createTaskCard(content, task);
@@ -209,8 +215,143 @@ export class JavaScriptKanbanView extends ItemView {
         });
     }
 
+    private setupColumnDropZone(columnContent: HTMLElement, column: any): void {
+        // Allow dropping
+        columnContent.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer!.dropEffect = 'move';
+            columnContent.classList.add('js-drop-over');
+        });
+        
+        // Remove drop styling when drag leaves
+        columnContent.addEventListener('dragleave', (e) => {
+            // Only remove if we're actually leaving the column
+            if (!columnContent.contains(e.relatedTarget as Node)) {
+                columnContent.classList.remove('js-drop-over');
+            }
+        });
+        
+        // Handle drop
+        columnContent.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            columnContent.classList.remove('js-drop-over');
+            
+            try {
+                const taskData = e.dataTransfer!.getData('application/json');
+                if (!taskData) {
+                    console.warn('No task data found in drop event');
+                    return;
+                }
+                
+                const task = JSON.parse(taskData);
+                console.log('Dropping task:', this.extractTaskText(task), 'into column:', column.name);
+                
+                // Move task to new column
+                await this.moveTaskToColumn(task, column);
+                
+            } catch (error) {
+                console.error('Failed to handle drop:', error);
+            }
+        });
+    }
+
+    private async moveTaskToColumn(task: any, targetColumn: any): Promise<void> {
+        try {
+            const filePath = this.extractFilePath(task);
+            if (!filePath) {
+                console.error('No file path found for task');
+                return;
+            }
+            
+            const file = this.app.vault.getAbstractFileByPath(filePath);
+            if (!file) {
+                console.error('File not found:', filePath);
+                return;
+            }
+            
+            // Read file content
+            const content = await this.app.vault.read(file);
+            const lines = content.split('\n');
+            
+            // Find the task line
+            const taskLine = this.findTaskLineInFile(lines, task);
+            if (taskLine === -1) {
+                console.error('Task line not found in file');
+                return;
+            }
+            
+            // Update the line with new tags
+            let line = lines[taskLine];
+            const currentTags = this.extractTags(task);
+            const targetTag = targetColumn.tag;
+            
+            // Remove existing status tags
+            this.plugin.settings.columns.forEach(col => {
+                const colTag = col.tag.replace('#', '');
+                line = line.replace(new RegExp(`\\s*#${colTag}\\b`, 'gi'), '');
+            });
+            
+            // Add new tag if not already present
+            if (!line.includes(targetTag)) {
+                line = line.trim() + ' ' + targetTag;
+            }
+            
+            // Update task completion status based on column
+            if (targetColumn.id === 'done') {
+                line = line.replace(/- \[ \]/, '- [x]');
+            } else {
+                line = line.replace(/- \[x\]/, '- [ ]');
+            }
+            
+            // Update the file
+            lines[taskLine] = line;
+            const newContent = lines.join('\n');
+            await this.app.vault.modify(file, newContent);
+            
+            console.log('Task moved successfully');
+            
+            // Refresh the view
+            await this.refreshView();
+            
+        } catch (error) {
+            console.error('Failed to move task:', error);
+            // Show user-friendly error
+            const notice = document.createEl('div', {
+                cls: 'notice',
+                text: `Failed to move task: ${error.message}`
+            });
+            document.body.appendChild(notice);
+            setTimeout(() => notice.remove(), 3000);
+        }
+    }
+
+    private findTaskLineInFile(lines: string[], task: any): number {
+        const taskText = this.extractTaskText(task);
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            // Check if this line contains the task text and is a task
+            if (line.includes(taskText) && this.isTaskLine(line)) {
+                return i;
+            }
+        }
+        
+        return -1;
+    }
+
+    private isTaskLine(line: string): boolean {
+        return line.includes('- [ ]') || line.includes('- [x]') || line.includes('- [X]');
+    }
+
     private createTaskCard(container: HTMLElement, task: any): void {
-        const card = container.createEl('div', { cls: 'js-kanban-task-card' });
+        const card = container.createEl('div', { 
+            cls: 'js-kanban-task-card',
+            attr: {
+                'draggable': 'true',
+                'data-task-id': this.getTaskId(task),
+                'data-task-data': JSON.stringify(task)
+            }
+        });
         
         // Task text
         const text = this.extractTaskText(task);
@@ -240,8 +381,24 @@ export class JavaScriptKanbanView extends ItemView {
             });
         }
         
-        // Click handler to open file
-        card.addEventListener('click', async () => {
+        // Add drag and drop event listeners
+        this.setupTaskCardDragAndDrop(card, task);
+        
+        // Click handler to open file (with drag detection)
+        let isDragging = false;
+        let dragStartTime = 0;
+        
+        card.addEventListener('mousedown', () => {
+            dragStartTime = Date.now();
+        });
+        
+        card.addEventListener('click', async (e) => {
+            // Only handle click if it wasn't a drag operation
+            if (isDragging || (Date.now() - dragStartTime > 200)) {
+                return;
+            }
+            
+            e.preventDefault();
             try {
                 const filePath = this.extractFilePath(task);
                 if (filePath) {
@@ -253,6 +410,47 @@ export class JavaScriptKanbanView extends ItemView {
             } catch (error) {
                 console.error('Failed to open task file:', error);
             }
+        });
+    }
+
+    private setupTaskCardDragAndDrop(card: HTMLElement, task: any): void {
+        // Ensure draggable attribute is set
+        card.setAttribute('draggable', 'true');
+        
+        // Drag start
+        card.addEventListener('dragstart', (e) => {
+            console.log('Drag start event triggered for task:', this.extractTaskText(task));
+            
+            if (!e.dataTransfer) {
+                console.error('DataTransfer not available');
+                return;
+            }
+            
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', this.getTaskId(task));
+            e.dataTransfer.setData('application/json', JSON.stringify(task));
+            
+            card.classList.add('js-dragging');
+            console.log('Drag started successfully for task:', this.extractTaskText(task));
+        });
+        
+        // Drag end
+        card.addEventListener('dragend', (e) => {
+            card.classList.remove('js-dragging');
+            console.log('Drag ended for task:', this.extractTaskText(task));
+        });
+        
+        // Add visual feedback for draggable items
+        card.addEventListener('mouseenter', () => {
+            card.style.cursor = 'grab';
+        });
+        
+        card.addEventListener('mousedown', () => {
+            card.style.cursor = 'grabbing';
+        });
+        
+        card.addEventListener('mouseup', () => {
+            card.style.cursor = 'grab';
         });
     }
 
@@ -295,9 +493,17 @@ export class JavaScriptKanbanView extends ItemView {
         return matches || [];
     }
 
+    private getTaskId(task: any): string {
+        // Create a unique ID for the task
+        const filePath = this.extractFilePath(task);
+        const taskText = this.extractTaskText(task);
+        return `${filePath}:${taskText.substring(0, 50)}`;
+    }
+
     private filterTasks(searchTerm: string, filter: string): void {
         // Implementation for filtering tasks
         console.log('Filtering tasks:', searchTerm, filter);
+        // TODO: Implement live filtering
     }
 
     private setupKeyboardShortcuts(container: HTMLElement, searchInput: HTMLInputElement): void {
@@ -307,6 +513,20 @@ export class JavaScriptKanbanView extends ItemView {
                 searchInput.focus();
             }
         });
+    }
+
+    private addDragIndicator(container: HTMLElement): void {
+        // Add a helpful tip about drag and drop
+        const helpText = container.createEl('div', { 
+            cls: 'js-kanban-help',
+            text: '💡 Tip: Drag tasks between columns to change their status'
+        });
+        
+        // Hide the help text after a few seconds
+        setTimeout(() => {
+            helpText.style.opacity = '0';
+            setTimeout(() => helpText.remove(), 300);
+        }, 5000);
     }
 
     private setupEventListeners(): void {
@@ -326,12 +546,22 @@ export class JavaScriptKanbanView extends ItemView {
     }
 
     private async refreshView(): Promise<void> {
-        if (this.datacoreView) {
-            try {
-                await this.datacoreView.refresh();
-            } catch (error) {
-                console.error('Failed to refresh JavaScript view:', error);
+        try {
+            // Find the board container and reload tasks
+            const container = document.getElementById('kanban-js-view');
+            if (container) {
+                const boardContainer = container.querySelector('.js-kanban-board') as HTMLElement;
+                const stats = container.querySelector('.js-kanban-stats') as HTMLElement;
+                
+                if (boardContainer && stats) {
+                    const datacoreApi = this.plugin.datacoreApi;
+                    if (datacoreApi) {
+                        await this.loadAndDisplayTasks(boardContainer, stats, datacoreApi);
+                    }
+                }
             }
+        } catch (error) {
+            console.error('Failed to refresh JavaScript view:', error);
         }
     }
 
