@@ -1,0 +1,383 @@
+import { DatacoreSync } from '../../src/DatacoreSync';
+import { TagManager } from '../../src/TagManager';
+import { TasksPluginIntegration } from '../../src/TasksPluginIntegration';
+import { createMockApp, createMockFile } from '../__mocks__/obsidian';
+import { createMockDatacoreApi, createMockQuery } from '../__mocks__/@blacksmithgu/datacore';
+import { sampleDatacoreResults, sampleFileContents } from '../fixtures/sample-tasks';
+
+// Mock the dependencies
+jest.mock('obsidian');
+jest.mock('@blacksmithgu/datacore');
+
+describe('Datacore-Tasks Integration Tests', () => {
+  let datacoreSync: DatacoreSync;
+  let tagManager: TagManager;
+  let tasksIntegration: TasksPluginIntegration;
+  let mockApp: any;
+  let mockPlugin: any;
+  let mockDatacoreApi: any;
+
+  beforeEach(async () => {
+    mockApp = createMockApp();
+    mockPlugin = {
+      settings: {
+        datacoreQuery: 'TABLE task, status, due, priority FROM "Tasks" WHERE task != null'
+      }
+    };
+    mockDatacoreApi = createMockDatacoreApi();
+
+    // Setup Datacore plugin
+    mockApp.plugins.plugins['datacore'] = {
+      api: mockDatacoreApi
+    };
+
+    // Setup Tasks plugin
+    mockApp.plugins.plugins['obsidian-tasks-plugin'] = {
+      api: { version: '1.0.0' }
+    };
+
+    datacoreSync = new DatacoreSync(mockApp, mockPlugin);
+    await datacoreSync.initialize();
+
+    tagManager = new TagManager(mockApp, datacoreSync);
+    tasksIntegration = new TasksPluginIntegration(mockApp);
+  });
+
+  afterEach(() => {
+    datacoreSync.cleanup();
+  });
+
+  describe('Full Task Lifecycle Integration', () => {
+    it('should query tasks from Datacore and parse with Tasks plugin format', async () => {
+      // Arrange
+      const tasksPluginFormattedContent = `# My Tasks
+
+- [ ] Complete project documentation #todo #work 📅 2024-01-15 🔼
+- [ ] Review pull request #doing #development 📅 2024-01-12
+- [ ] Deploy to production #waiting #deployment ⏫
+- [x] Fix bug in authentication #done #bugfix ✅ 2024-01-10`;
+
+      mockDatacoreApi.query.mockResolvedValue(createMockQuery(sampleDatacoreResults.table));
+      mockApp.vault.getAbstractFileByPath.mockReturnValue(createMockFile('tasks.md'));
+      mockApp.vault.read.mockResolvedValue(tasksPluginFormattedContent);
+
+      // Act
+      const tasks = await datacoreSync.getTasks();
+
+      // Assert
+      expect(tasks).toHaveLength(4);
+      
+      // Check first task (with Tasks plugin formatting)
+      expect(tasks[0].text).toBe('Complete project documentation');
+      expect(tasks[0].tags).toEqual(expect.arrayContaining(['#todo', '#work']));
+      expect(tasks[0].dueDate).toBe('2024-01-15');
+      expect(tasks[0].priority).toBe('high');
+    });
+
+    it('should update task status using Tasks plugin formatting', async () => {
+      // Arrange
+      const task = {
+        id: 'tasks.md:0',
+        text: 'Complete project documentation',
+        file: createMockFile('tasks.md'),
+        line: 0,
+        tags: ['#todo', '#work'],
+        dueDate: '2024-01-15',
+        priority: 'high',
+        status: 'todo',
+        completed: false,
+        metadata: {}
+      };
+
+      const originalContent = '- [ ] Complete project documentation #todo #work 📅 2024-01-15 🔼';
+      mockApp.vault.read.mockResolvedValue(originalContent);
+      mockApp.vault.modify.mockResolvedValue(undefined);
+
+      // Act
+      const result = await tagManager.updateTaskStatus(task, '#doing');
+
+      // Assert
+      expect(result).toBe(true);
+      expect(mockApp.vault.modify).toHaveBeenCalledWith(
+        task.file,
+        expect.stringContaining('#doing')
+      );
+    });
+
+    it('should handle Tasks plugin priority indicators correctly', () => {
+      // Arrange
+      const taskLines = [
+        '- [ ] High priority task 🔼',
+        '- [ ] Highest priority task ⏫',
+        '- [ ] Low priority task 🔽',
+        '- [ ] Lowest priority task ⏬',
+        '- [ ] Normal priority task'
+      ];
+
+      // Act & Assert
+      taskLines.forEach(line => {
+        const metadata = tasksIntegration.extractTaskMetadata(line);
+        expect(metadata.isTask).toBe(true);
+        
+        if (line.includes('🔼')) {
+          expect(metadata.priority).toBe('high');
+        } else if (line.includes('⏫')) {
+          expect(metadata.priority).toBe('highest');
+        } else if (line.includes('🔽')) {
+          expect(metadata.priority).toBe('low');
+        } else if (line.includes('⏬')) {
+          expect(metadata.priority).toBe('lowest');
+        } else {
+          expect(metadata.priority).toBe('normal');
+        }
+      });
+    });
+
+    it('should preserve Tasks plugin metadata during status updates', async () => {
+      // Arrange
+      const task = {
+        id: 'tasks.md:0',
+        text: 'Task with metadata',
+        file: createMockFile('tasks.md'),
+        line: 0,
+        tags: ['#todo'],
+        status: 'todo',
+        completed: false,
+        metadata: {}
+      };
+
+      const originalContent = '- [ ] Task with metadata #todo 📅 2024-01-15 🔼 🛫 2024-01-10';
+      mockApp.vault.read.mockResolvedValue(originalContent);
+      
+      let modifiedContent = '';
+      mockApp.vault.modify.mockImplementation((file, content) => {
+        modifiedContent = content;
+        return Promise.resolve();
+      });
+
+      // Act
+      await tagManager.updateTaskStatus(task, '#doing');
+
+      // Assert
+      expect(modifiedContent).toContain('#doing');
+      expect(modifiedContent).toContain('📅 2024-01-15'); // Due date preserved
+      expect(modifiedContent).toContain('🔼'); // Priority preserved
+      expect(modifiedContent).toContain('🛫 2024-01-10'); // Scheduled date preserved
+    });
+  });
+
+  describe('Error Handling Integration', () => {
+    it('should handle Datacore query failures gracefully', async () => {
+      // Arrange
+      mockDatacoreApi.query.mockResolvedValue({
+        successful: false,
+        error: 'Query syntax error'
+      });
+
+      // Act
+      const tasks = await datacoreSync.getTasks();
+
+      // Assert
+      expect(tasks).toEqual([]);
+    });
+
+    it('should handle malformed Tasks plugin syntax', async () => {
+      // Arrange
+      const malformedContent = `# Tasks
+
+- This is not a task
+- [ Malformed checkbox
+- [x] Good task #done
+- [ ] Another good task #todo`;
+
+      mockDatacoreApi.query.mockResolvedValue(createMockQuery(sampleDatacoreResults.table));
+      mockApp.vault.getAbstractFileByPath.mockReturnValue(createMockFile('tasks.md'));
+      mockApp.vault.read.mockResolvedValue(malformedContent);
+
+      // Act
+      const tasks = await datacoreSync.getTasks();
+
+      // Assert
+      // Should only find the properly formatted tasks
+      expect(tasks.length).toBeGreaterThan(0);
+    });
+
+    it('should handle mixed task formats gracefully', async () => {
+      // Arrange
+      const mixedContent = `# Mixed Format Tasks
+
+- [ ] Simple task #todo
+- [ ] Tasks plugin task #doing 📅 2024-01-15 🔼
+- [x] Completed simple task #done
+- [x] Completed Tasks plugin task #done ✅ 2024-01-10 🔼`;
+
+      mockDatacoreApi.query.mockResolvedValue(createMockQuery(sampleDatacoreResults.table));
+      mockApp.vault.getAbstractFileByPath.mockReturnValue(createMockFile('mixed.md'));
+      mockApp.vault.read.mockResolvedValue(mixedContent);
+
+      // Act
+      const tasks = await datacoreSync.getTasks();
+
+      // Assert
+      expect(tasks.length).toBeGreaterThan(0);
+      tasks.forEach(task => {
+        expect(task).toHaveProperty('id');
+        expect(task).toHaveProperty('text');
+        expect(task).toHaveProperty('completed');
+        expect(task).toHaveProperty('tags');
+      });
+    });
+  });
+
+  describe('Performance Integration', () => {
+    it('should handle large number of tasks efficiently', async () => {
+      // Arrange
+      const largeBatchSize = 100;
+      const largeQueryResult = {
+        type: 'table' as const,
+        data: {
+          headers: ['task', 'status'],
+          values: Array.from({ length: largeBatchSize }, (_, i) => [
+            { value: `Task ${i}`, path: 'large.md' },
+            { value: 'todo' }
+          ])
+        }
+      };
+
+      const largeFileContent = Array.from({ length: largeBatchSize }, (_, i) => 
+        `- [ ] Task ${i} #todo`
+      ).join('\n');
+
+      mockDatacoreApi.query.mockResolvedValue(createMockQuery(largeQueryResult));
+      mockApp.vault.getAbstractFileByPath.mockReturnValue(createMockFile('large.md'));
+      mockApp.vault.read.mockResolvedValue(largeFileContent);
+
+      const startTime = Date.now();
+
+      // Act
+      const tasks = await datacoreSync.getTasks();
+
+      // Assert
+      const duration = Date.now() - startTime;
+      expect(tasks).toHaveLength(largeBatchSize);
+      expect(duration).toBeLessThan(5000); // Should complete within 5 seconds
+    });
+
+    it('should debounce refresh calls correctly', async () => {
+      // Arrange
+      const refreshSpy = jest.spyOn(mockApp.workspace, 'trigger');
+
+      // Act - Trigger multiple rapid refreshes
+      await Promise.all([
+        datacoreSync.refresh(),
+        datacoreSync.refresh(),
+        datacoreSync.refresh()
+      ]);
+
+      // Wait for debounce to settle
+      await new Promise(resolve => setTimeout(resolve, 600));
+
+      // Assert - Should debounce and only trigger once
+      expect(refreshSpy).toHaveBeenCalledWith('datacore-kanban:refresh');
+      // Note: Due to debouncing, we might see fewer calls than the number of refresh attempts
+    });
+  });
+
+  describe('Real-world Scenarios', () => {
+    it('should handle typical GTD workflow', async () => {
+      // Arrange - Setup a typical Getting Things Done workflow
+      const gtdContent = `# Getting Things Done
+
+## Inbox
+- [ ] Review meeting notes #todo #inbox
+- [ ] Process email #todo #inbox
+
+## Projects
+- [ ] Plan Q1 objectives #todo #project-planning 📅 2024-01-20 🔼
+- [ ] Update team documentation #doing #documentation
+- [ ] Review budget proposal #waiting #finance ⏫
+
+## Completed
+- [x] Submit timesheet #done #admin ✅ 2024-01-08`;
+
+      const gtdQueryResult = {
+        type: 'table' as const,
+        data: {
+          headers: ['task', 'status', 'due', 'priority'],
+          values: [
+            [{ value: 'Review meeting notes', path: 'gtd.md' }, { value: 'todo' }, null, null],
+            [{ value: 'Plan Q1 objectives', path: 'gtd.md' }, { value: 'todo' }, { value: '2024-01-20' }, { value: 'high' }],
+            [{ value: 'Update team documentation', path: 'gtd.md' }, { value: 'doing' }, null, null],
+            [{ value: 'Review budget proposal', path: 'gtd.md' }, { value: 'waiting' }, null, { value: 'highest' }],
+            [{ value: 'Submit timesheet', path: 'gtd.md' }, { value: 'done' }, null, null]
+          ]
+        }
+      };
+
+      mockDatacoreApi.query.mockResolvedValue(createMockQuery(gtdQueryResult));
+      mockApp.vault.getAbstractFileByPath.mockReturnValue(createMockFile('gtd.md'));
+      mockApp.vault.read.mockResolvedValue(gtdContent);
+
+      // Act
+      const tasks = await datacoreSync.getTasks();
+
+      // Assert
+      expect(tasks).toHaveLength(5);
+      
+      // Check that different task types are parsed correctly
+      const todoTasks = tasks.filter(t => t.tags.includes('#todo'));
+      const doingTasks = tasks.filter(t => t.tags.includes('#doing'));
+      const waitingTasks = tasks.filter(t => t.tags.includes('#waiting'));
+      const doneTasks = tasks.filter(t => t.tags.includes('#done'));
+
+      expect(todoTasks.length).toBeGreaterThan(0);
+      expect(doingTasks).toHaveLength(1);
+      expect(waitingTasks).toHaveLength(1);
+      expect(doneTasks).toHaveLength(1);
+
+      // Check priority handling
+      const highPriorityTask = tasks.find(t => t.priority === 'high');
+      expect(highPriorityTask?.text).toBe('Plan Q1 objectives');
+
+      const highestPriorityTask = tasks.find(t => t.priority === 'highest');
+      expect(highestPriorityTask?.text).toBe('Review budget proposal');
+    });
+
+    it('should handle project-based task organization', async () => {
+      // Arrange - Multiple project files with cross-references
+      const projectFiles = {
+        'project-a.md': '- [ ] Implement feature A #todo #project-a\n- [ ] Test feature A #todo #project-a',
+        'project-b.md': '- [ ] Design UI for feature B #doing #project-b\n- [x] Setup project B #done #project-b'
+      };
+
+      const projectQueryResult = {
+        type: 'list' as const,
+        data: [
+          { file: { path: 'project-a.md' }, text: 'Implement feature A', status: 'todo', tags: ['#todo', '#project-a'] },
+          { file: { path: 'project-a.md' }, text: 'Test feature A', status: 'todo', tags: ['#todo', '#project-a'] },
+          { file: { path: 'project-b.md' }, text: 'Design UI for feature B', status: 'doing', tags: ['#doing', '#project-b'] },
+          { file: { path: 'project-b.md' }, text: 'Setup project B', status: 'done', tags: ['#done', '#project-b'] }
+        ]
+      };
+
+      mockDatacoreApi.query.mockResolvedValue(createMockQuery(projectQueryResult));
+      mockApp.vault.getAbstractFileByPath.mockImplementation((path: string) => createMockFile(path));
+      mockApp.vault.read.mockImplementation((file: any) => {
+        return Promise.resolve(projectFiles[file.path as keyof typeof projectFiles] || '');
+      });
+
+      // Act
+      const tasks = await datacoreSync.getTasks();
+
+      // Assert
+      expect(tasks).toHaveLength(4);
+      
+      // Verify project organization
+      const projectATasks = tasks.filter(t => t.tags.includes('#project-a'));
+      const projectBTasks = tasks.filter(t => t.tags.includes('#project-b'));
+      
+      expect(projectATasks).toHaveLength(2);
+      expect(projectBTasks).toHaveLength(2);
+    });
+  });
+});

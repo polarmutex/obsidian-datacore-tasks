@@ -1,0 +1,311 @@
+import { TagManager } from '../../src/TagManager';
+import { DatacoreSync } from '../../src/DatacoreSync';
+import { createMockApp, createMockFile } from '../__mocks__/obsidian';
+import { sampleTasks, sampleFileContents } from '../fixtures/sample-tasks';
+
+// Mock the dependencies
+jest.mock('obsidian');
+jest.mock('../../src/DatacoreSync');
+jest.mock('../../src/TasksPluginIntegration');
+
+describe('TagManager', () => {
+  let tagManager: TagManager;
+  let mockApp: any;
+  let mockDatacoreSync: jest.Mocked<DatacoreSync>;
+
+  beforeEach(() => {
+    mockApp = createMockApp();
+    mockDatacoreSync = {
+      refresh: jest.fn().mockResolvedValue(undefined)
+    } as any;
+    
+    tagManager = new TagManager(mockApp, mockDatacoreSync);
+  });
+
+  describe('updateTaskStatus', () => {
+    it('should update task status successfully', async () => {
+      // Arrange
+      const task = sampleTasks[0]; // todo task
+      const newStatus = '#doing';
+      
+      mockApp.vault.read.mockResolvedValue(sampleFileContents['tasks.md']);
+      mockApp.vault.modify.mockResolvedValue(undefined);
+
+      // Act
+      const result = await tagManager.updateTaskStatus(task, newStatus);
+
+      // Assert
+      expect(result).toBe(true);
+      expect(mockApp.vault.read).toHaveBeenCalledWith(task.file);
+      expect(mockApp.vault.modify).toHaveBeenCalled();
+      expect(mockDatacoreSync.refresh).toHaveBeenCalled();
+    });
+
+    it('should handle line out of bounds error', async () => {
+      // Arrange
+      const task = { ...sampleTasks[0], line: 999 };
+      mockApp.vault.read.mockResolvedValue('Short file content');
+
+      // Act
+      const result = await tagManager.updateTaskStatus(task, '#doing');
+
+      // Assert
+      expect(result).toBe(false);
+      expect(mockApp.vault.modify).not.toHaveBeenCalled();
+    });
+
+    it('should handle file read errors', async () => {
+      // Arrange
+      const task = sampleTasks[0];
+      mockApp.vault.read.mockRejectedValue(new Error('File not found'));
+
+      // Act
+      const result = await tagManager.updateTaskStatus(task, '#doing');
+
+      // Assert
+      expect(result).toBe(false);
+      expect(mockApp.vault.modify).not.toHaveBeenCalled();
+    });
+
+    it('should handle file write errors', async () => {
+      // Arrange
+      const task = sampleTasks[0];
+      mockApp.vault.read.mockResolvedValue(sampleFileContents['tasks.md']);
+      mockApp.vault.modify.mockRejectedValue(new Error('Write failed'));
+
+      // Act
+      const result = await tagManager.updateTaskStatus(task, '#doing');
+
+      // Assert
+      expect(result).toBe(false);
+    });
+
+    it('should mark task as completed when moved to done', async () => {
+      // Arrange
+      const task = sampleTasks[0]; // uncompleted task
+      mockApp.vault.read.mockResolvedValue('- [ ] Complete project documentation #todo #work');
+      mockApp.vault.modify.mockImplementation((file, content) => {
+        expect(content).toContain('- [x]'); // Should be checked
+        expect(content).toContain('#done');
+        return Promise.resolve();
+      });
+
+      // Act
+      const result = await tagManager.updateTaskStatus(task, '#done');
+
+      // Assert
+      expect(result).toBe(true);
+    });
+
+    it('should uncheck task when moved away from done', async () => {
+      // Arrange
+      const task = sampleTasks[3]; // completed task
+      mockApp.vault.read.mockResolvedValue('- [x] Fix bug in authentication #done #bugfix');
+      mockApp.vault.modify.mockImplementation((file, content) => {
+        expect(content).toContain('- [ ]'); // Should be unchecked
+        expect(content).toContain('#todo');
+        return Promise.resolve();
+      });
+
+      // Act
+      const result = await tagManager.updateTaskStatus(task, '#todo');
+
+      // Assert
+      expect(result).toBe(true);
+    });
+  });
+
+  describe('addTag', () => {
+    it('should add tag to task successfully', async () => {
+      // Arrange
+      const task = sampleTasks[0];
+      const newTag = '#urgent';
+      
+      mockApp.vault.read.mockResolvedValue(sampleFileContents['tasks.md']);
+      mockApp.vault.modify.mockResolvedValue(undefined);
+
+      // Act
+      const result = await tagManager.addTag(task, newTag);
+
+      // Assert
+      expect(result).toBe(true);
+      expect(mockApp.vault.modify).toHaveBeenCalled();
+      expect(mockDatacoreSync.refresh).toHaveBeenCalled();
+    });
+
+    it('should not add duplicate tags', async () => {
+      // Arrange
+      const task = sampleTasks[0];
+      const existingTag = '#todo';
+      
+      mockApp.vault.read.mockResolvedValue(sampleFileContents['tasks.md']);
+
+      // Act
+      const result = await tagManager.addTag(task, existingTag);
+
+      // Assert
+      expect(result).toBe(true);
+      expect(mockApp.vault.modify).not.toHaveBeenCalled();
+    });
+
+    it('should handle tag addition errors', async () => {
+      // Arrange
+      const task = sampleTasks[0];
+      mockApp.vault.read.mockRejectedValue(new Error('Read failed'));
+
+      // Act
+      const result = await tagManager.addTag(task, '#new');
+
+      // Assert
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('removeTag', () => {
+    it('should remove tag from task successfully', async () => {
+      // Arrange
+      const task = sampleTasks[0];
+      const tagToRemove = '#work';
+      
+      mockApp.vault.read.mockResolvedValue(sampleFileContents['tasks.md']);
+      mockApp.vault.modify.mockResolvedValue(undefined);
+
+      // Act
+      const result = await tagManager.removeTag(task, tagToRemove);
+
+      // Assert
+      expect(result).toBe(true);
+      expect(mockApp.vault.modify).toHaveBeenCalled();
+      expect(mockDatacoreSync.refresh).toHaveBeenCalled();
+    });
+
+    it('should handle removal of non-existent tags', async () => {
+      // Arrange
+      const task = sampleTasks[0];
+      const nonExistentTag = '#nonexistent';
+      
+      mockApp.vault.read.mockResolvedValue(sampleFileContents['tasks.md']);
+
+      // Act
+      const result = await tagManager.removeTag(task, nonExistentTag);
+
+      // Assert
+      expect(result).toBe(true); // Should succeed even if tag doesn't exist
+    });
+  });
+
+  describe('toggleTaskCompletion', () => {
+    it('should mark incomplete task as complete', async () => {
+      // Arrange
+      const task = sampleTasks[0]; // incomplete task
+      mockApp.vault.read.mockResolvedValue('- [ ] Complete project documentation #todo #work');
+      mockApp.vault.modify.mockImplementation((file, content) => {
+        expect(content).toContain('- [x]');
+        expect(content).toContain('#done');
+        return Promise.resolve();
+      });
+
+      // Act
+      const result = await tagManager.toggleTaskCompletion(task);
+
+      // Assert
+      expect(result).toBe(true);
+    });
+
+    it('should mark complete task as incomplete', async () => {
+      // Arrange
+      const task = sampleTasks[3]; // complete task
+      mockApp.vault.read.mockResolvedValue('- [x] Fix bug in authentication #done #bugfix');
+      mockApp.vault.modify.mockImplementation((file, content) => {
+        expect(content).toContain('- [ ]');
+        expect(content).toContain('#todo');
+        return Promise.resolve();
+      });
+
+      // Act
+      const result = await tagManager.toggleTaskCompletion(task);
+
+      // Assert
+      expect(result).toBe(true);
+    });
+
+    it('should handle non-task lines gracefully', async () => {
+      // Arrange
+      const task = { ...sampleTasks[0], line: 0 };
+      mockApp.vault.read.mockResolvedValue('# This is a header, not a task');
+
+      // Act
+      const result = await tagManager.toggleTaskCompletion(task);
+
+      // Assert
+      expect(result).toBe(true); // Should not fail, just do nothing
+    });
+  });
+
+  describe('createTask', () => {
+    it('should create new task successfully', async () => {
+      // Arrange
+      const file = createMockFile('new-tasks.md');
+      const taskText = 'New task to create';
+      const tags = ['#todo', '#new'];
+      
+      mockApp.vault.read.mockResolvedValue('# Existing content\n\n- [x] Old task #done');
+      mockApp.vault.modify.mockResolvedValue(undefined);
+
+      // Act
+      const result = await tagManager.createTask(file, taskText, tags);
+
+      // Assert
+      expect(result).toBe(true);
+      expect(mockApp.vault.modify).toHaveBeenCalledWith(
+        file,
+        expect.stringContaining('- [ ] New task to create #todo #new')
+      );
+      expect(mockDatacoreSync.refresh).toHaveBeenCalled();
+    });
+
+    it('should create task without tags', async () => {
+      // Arrange
+      const file = createMockFile('simple.md');
+      const taskText = 'Simple task';
+      
+      mockApp.vault.read.mockResolvedValue('');
+      mockApp.vault.modify.mockResolvedValue(undefined);
+
+      // Act
+      const result = await tagManager.createTask(file, taskText);
+
+      // Assert
+      expect(result).toBe(true);
+      expect(mockApp.vault.modify).toHaveBeenCalledWith(
+        file,
+        '- [ ] Simple task'
+      );
+    });
+
+    it('should handle task creation errors', async () => {
+      // Arrange
+      const file = createMockFile('error.md');
+      mockApp.vault.read.mockRejectedValue(new Error('Read failed'));
+
+      // Act
+      const result = await tagManager.createTask(file, 'New task');
+
+      // Assert
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('private helper methods', () => {
+    it('should get correct status display names', () => {
+      // Access private method through type assertion for testing
+      const manager = tagManager as any;
+      
+      expect(manager.getStatusDisplayName('#todo')).toBe('To Do');
+      expect(manager.getStatusDisplayName('#doing')).toBe('In Progress');
+      expect(manager.getStatusDisplayName('#waiting')).toBe('Waiting');
+      expect(manager.getStatusDisplayName('#done')).toBe('Done');
+      expect(manager.getStatusDisplayName('#custom')).toBe('custom');
+    });
+  });
+});

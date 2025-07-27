@@ -1,0 +1,350 @@
+import DatacoreKanbanPlugin from '../../src/main';
+import { DatacoreSync } from '../../src/DatacoreSync';
+import { TagManager } from '../../src/TagManager';
+import { KanbanView } from '../../src/KanbanView';
+import { createMockApp, createMockLeaf } from '../__mocks__/obsidian';
+import { createMockDatacoreApi } from '../__mocks__/@blacksmithgu/datacore';
+import { sampleKanbanSettings } from '../fixtures/sample-tasks';
+
+// Mock the dependencies
+jest.mock('obsidian');
+jest.mock('@blacksmithgu/datacore');
+
+describe('Plugin Integration Tests', () => {
+  let plugin: DatacoreKanbanPlugin;
+  let mockApp: any;
+  let mockDatacoreApi: any;
+
+  beforeEach(() => {
+    mockApp = createMockApp();
+    mockDatacoreApi = createMockDatacoreApi();
+    
+    // Mock successful Datacore initialization
+    mockApp.plugins.plugins['datacore'] = {
+      api: mockDatacoreApi
+    };
+
+    plugin = new DatacoreKanbanPlugin(mockApp, {
+      id: 'obsidian-datacore-kanban',
+      name: 'Datacore Kanban Board',
+      version: '1.0.0',
+      minAppVersion: '0.15.0'
+    });
+  });
+
+  afterEach(async () => {
+    if (plugin) {
+      await plugin.onunload();
+    }
+  });
+
+  describe('Plugin Lifecycle', () => {
+    it('should load plugin successfully', async () => {
+      // Act
+      await plugin.onload();
+
+      // Assert
+      expect(plugin.datacoreSync).toBeInstanceOf(DatacoreSync);
+      expect(plugin.tagManager).toBeInstanceOf(TagManager);
+      expect(plugin.settings).toBeDefined();
+    });
+
+    it('should register kanban view', async () => {
+      // Act
+      await plugin.onload();
+
+      // Assert
+      expect(mockApp.workspace.registerView).toHaveBeenCalledWith(
+        'datacore-kanban-view',
+        expect.any(Function)
+      );
+    });
+
+    it('should add ribbon icon', async () => {
+      // Act
+      await plugin.onload();
+
+      // Assert
+      expect(plugin.addRibbonIcon).toHaveBeenCalledWith(
+        'layout-grid',
+        'Open Kanban Board',
+        expect.any(Function)
+      );
+    });
+
+    it('should add commands', async () => {
+      // Act
+      await plugin.onload();
+
+      // Assert
+      expect(plugin.addCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'open-kanban-board',
+          name: 'Open Kanban Board'
+        })
+      );
+      expect(plugin.addCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'refresh-kanban-board',
+          name: 'Refresh Kanban Board'
+        })
+      );
+    });
+
+    it('should add settings tab', async () => {
+      // Act
+      await plugin.onload();
+
+      // Assert
+      expect(plugin.addSettingTab).toHaveBeenCalled();
+    });
+
+    it('should initialize Datacore integration', async () => {
+      // Act
+      await plugin.onload();
+
+      // Assert
+      expect(plugin.isDatacoreReady).toBe(true);
+      expect(plugin.datacoreApi).toBe(mockDatacoreApi);
+    });
+
+    it('should handle plugin unload correctly', async () => {
+      // Arrange
+      await plugin.onload();
+      const mockLeaf = createMockLeaf();
+      mockApp.workspace.getLeavesOfType.mockReturnValue([mockLeaf]);
+
+      // Act
+      plugin.onunload();
+
+      // Assert
+      expect(mockLeaf.detach).toHaveBeenCalled();
+    });
+  });
+
+  describe('Settings Management', () => {
+    beforeEach(async () => {
+      await plugin.onload();
+    });
+
+    it('should load default settings', () => {
+      // Assert
+      expect(plugin.settings).toEqual(
+        expect.objectContaining({
+          columns: expect.arrayContaining([
+            expect.objectContaining({
+              id: 'todo',
+              name: 'To Do',
+              tag: '#todo'
+            })
+          ]),
+          datacoreQuery: expect.any(String),
+          refreshInterval: expect.any(Number)
+        })
+      );
+    });
+
+    it('should save settings correctly', async () => {
+      // Arrange
+      const newSettings = {
+        ...plugin.settings,
+        refreshInterval: 10000
+      };
+      plugin.settings = newSettings;
+
+      // Act
+      await plugin.saveSettings();
+
+      // Assert
+      expect(plugin.saveData).toHaveBeenCalledWith(newSettings);
+    });
+
+    it('should handle settings load errors gracefully', async () => {
+      // Arrange
+      const errorPlugin = new DatacoreKanbanPlugin(mockApp, {
+        id: 'test',
+        name: 'Test',
+        version: '1.0.0',
+        minAppVersion: '0.15.0'
+      });
+      errorPlugin.loadData = jest.fn().mockRejectedValue(new Error('Load failed'));
+
+      // Act
+      await errorPlugin.onload();
+
+      // Assert
+      expect(errorPlugin.settings).toBeDefined(); // Should have defaults
+    });
+  });
+
+  describe('View Management', () => {
+    beforeEach(async () => {
+      await plugin.onload();
+    });
+
+    it('should activate view when no existing view', async () => {
+      // Arrange
+      mockApp.workspace.getLeavesOfType.mockReturnValue([]);
+      const mockLeaf = createMockLeaf();
+      mockApp.workspace.getRightLeaf.mockReturnValue(mockLeaf);
+
+      // Act
+      await plugin.activateView();
+
+      // Assert
+      expect(mockLeaf.setViewState).toHaveBeenCalledWith({
+        type: 'datacore-kanban-view',
+        active: true
+      });
+      expect(mockApp.workspace.revealLeaf).toHaveBeenCalledWith(mockLeaf);
+    });
+
+    it('should focus existing view when available', async () => {
+      // Arrange
+      const existingLeaf = createMockLeaf();
+      mockApp.workspace.getLeavesOfType.mockReturnValue([existingLeaf]);
+
+      // Act
+      await plugin.activateView();
+
+      // Assert
+      expect(mockApp.workspace.revealLeaf).toHaveBeenCalledWith(existingLeaf);
+      expect(existingLeaf.setViewState).not.toHaveBeenCalled();
+    });
+
+    it('should handle view activation errors gracefully', async () => {
+      // Arrange
+      mockApp.workspace.getLeavesOfType.mockReturnValue([]);
+      mockApp.workspace.getRightLeaf.mockReturnValue(null);
+
+      // Act & Assert - should not throw
+      await expect(plugin.activateView()).resolves.toBeUndefined();
+    });
+  });
+
+  describe('Service Integration', () => {
+    beforeEach(async () => {
+      await plugin.onload();
+    });
+
+    it('should have properly initialized DatacoreSync', () => {
+      // Assert
+      expect(plugin.datacoreSync).toBeInstanceOf(DatacoreSync);
+      expect(plugin.datacoreSync.isReady).toBe(true);
+    });
+
+    it('should have properly initialized TagManager', () => {
+      // Assert
+      expect(plugin.tagManager).toBeInstanceOf(TagManager);
+    });
+
+    it('should connect services correctly', () => {
+      // Assert
+      expect(plugin.tagManager).toBeDefined();
+      expect(plugin.datacoreSync).toBeDefined();
+      
+      // TagManager should have reference to DatacoreSync
+      expect((plugin.tagManager as any).datacoreSync).toBe(plugin.datacoreSync);
+    });
+  });
+
+  describe('Event Handling', () => {
+    beforeEach(async () => {
+      await plugin.onload();
+    });
+
+    it('should register workspace events', () => {
+      // Assert
+      expect(plugin.registerEvent).toHaveBeenCalledWith(
+        expect.any(Object) // EventRef
+      );
+    });
+
+    it('should handle refresh commands correctly', async () => {
+      // Arrange
+      const refreshSpy = jest.spyOn(plugin.datacoreSync, 'refresh');
+
+      // Act
+      const refreshCommand = (plugin.addCommand as jest.Mock).mock.calls
+        .find(call => call[0].id === 'refresh-kanban-board')[0];
+      await refreshCommand.callback();
+
+      // Assert
+      expect(refreshSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe('Error Scenarios', () => {
+    it('should handle Datacore initialization failure', async () => {
+      // Arrange
+      mockApp.plugins.plugins = {}; // No Datacore plugin
+
+      // Act
+      await plugin.onload();
+
+      // Assert
+      expect(plugin.isDatacoreReady).toBe(false);
+      expect(plugin.datacoreApi).toBeNull();
+    });
+
+    it('should handle plugin load errors gracefully', async () => {
+      // Arrange
+      plugin.loadSettings = jest.fn().mockRejectedValue(new Error('Settings error'));
+
+      // Act & Assert - should not throw
+      await expect(plugin.onload()).resolves.toBeUndefined();
+    });
+
+    it('should handle service initialization errors', async () => {
+      // Arrange
+      const originalDatacoreSync = DatacoreSync;
+      (DatacoreSync as any) = jest.fn().mockImplementation(() => {
+        throw new Error('DatacoreSync error');
+      });
+
+      // Act & Assert - should not throw
+      await expect(plugin.onload()).resolves.toBeUndefined();
+
+      // Cleanup
+      (DatacoreSync as any) = originalDatacoreSync;
+    });
+  });
+
+  describe('Real Workflow Simulation', () => {
+    beforeEach(async () => {
+      await plugin.onload();
+    });
+
+    it('should simulate complete workflow: load -> open view -> refresh', async () => {
+      // Arrange
+      const mockLeaf = createMockLeaf();
+      mockApp.workspace.getLeavesOfType.mockReturnValue([]);
+      mockApp.workspace.getRightLeaf.mockReturnValue(mockLeaf);
+
+      // Act
+      // 1. Open kanban view
+      await plugin.activateView();
+      
+      // 2. Refresh board
+      await plugin.datacoreSync.refresh();
+
+      // Assert
+      expect(mockLeaf.setViewState).toHaveBeenCalled();
+      expect(mockApp.workspace.revealLeaf).toHaveBeenCalled();
+      expect(mockApp.workspace.trigger).toHaveBeenCalledWith('datacore-kanban:refresh');
+    });
+
+    it('should handle rapid successive operations', async () => {
+      // Act - Simulate rapid operations
+      const operations = [
+        plugin.activateView(),
+        plugin.datacoreSync.refresh(),
+        plugin.saveSettings(),
+        plugin.activateView()
+      ];
+
+      // Assert - should all complete without errors
+      await expect(Promise.all(operations)).resolves.toBeDefined();
+    });
+  });
+});

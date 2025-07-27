@@ -1,0 +1,11 @@
+{
+  "id": "obsidian-datacore-kanban",
+  "name": "Datacore Kanban Board",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "Dynamic kanban board with Datacore queries and Tasks plugin integration. Drag tasks between columns to automatically update status tags.",
+  "author": "Developer",
+  "authorUrl": "https://github.com/developer",
+  "fundingUrl": "https://github.com/sponsors/developer",
+  "isDesktopOnly": false
+}

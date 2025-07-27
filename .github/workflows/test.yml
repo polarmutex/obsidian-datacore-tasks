@@ -1,0 +1,202 @@
+name: Test Suite
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run TypeScript type checking
+      run: npm run check
+
+    - name: Run linting
+      run: npm run lint
+
+    - name: Run tests
+      run: npm run test:ci
+
+    - name: Upload coverage to Codecov
+      if: matrix.node-version == '20.x'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage/lcov.info
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: true
+
+    - name: Build plugin
+      run: npm run build
+
+    - name: Archive production artifacts
+      if: matrix.node-version == '20.x'
+      uses: actions/upload-artifact@v3
+      with:
+        name: plugin-build
+        path: |
+          main.js
+          manifest.json
+          styles.css
+
+  test-coverage:
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Generate coverage report
+      run: npm run test:coverage
+
+    - name: Coverage Summary
+      run: |
+        echo "## Test Coverage Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Coverage Thresholds" >> $GITHUB_STEP_SUMMARY
+        echo "- Branches: 70%" >> $GITHUB_STEP_SUMMARY
+        echo "- Functions: 80%" >> $GITHUB_STEP_SUMMARY
+        echo "- Lines: 80%" >> $GITHUB_STEP_SUMMARY
+        echo "- Statements: 80%" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ -f coverage/coverage-summary.json ]; then
+          echo "### Actual Coverage" >> $GITHUB_STEP_SUMMARY
+          node -e "
+            const coverage = require('./coverage/coverage-summary.json');
+            const total = coverage.total;
+            console.log('- Branches: ' + total.branches.pct + '%');
+            console.log('- Functions: ' + total.functions.pct + '%');
+            console.log('- Lines: ' + total.lines.pct + '%');
+            console.log('- Statements: ' + total.statements.pct + '%');
+          " >> $GITHUB_STEP_SUMMARY
+        fi
+
+    - name: Comment coverage on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          if (fs.existsSync('coverage/coverage-summary.json')) {
+            const coverage = JSON.parse(fs.readFileSync('coverage/coverage-summary.json'));
+            const total = coverage.total;
+            
+            const body = `## 🧪 Test Coverage Report
+            
+            | Metric | Coverage | Threshold | Status |
+            |--------|----------|-----------|--------|
+            | Branches | ${total.branches.pct}% | 70% | ${total.branches.pct >= 70 ? '✅' : '❌'} |
+            | Functions | ${total.functions.pct}% | 80% | ${total.functions.pct >= 80 ? '✅' : '❌'} |
+            | Lines | ${total.lines.pct}% | 80% | ${total.lines.pct >= 80 ? '✅' : '❌'} |
+            | Statements | ${total.statements.pct}% | 80% | ${total.statements.pct >= 80 ? '✅' : '❌'} |
+            
+            📊 [View detailed coverage report](https://codecov.io/gh/${{ github.repository }})
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+          }
+
+  security-audit:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run security audit
+      run: npm audit --audit-level=moderate
+
+    - name: Run dependency check
+      run: |
+        echo "## Security Audit Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Dependency Vulnerabilities" >> $GITHUB_STEP_SUMMARY
+        npm audit --json | node -e "
+          let input = '';
+          process.stdin.on('data', chunk => input += chunk);
+          process.stdin.on('end', () => {
+            try {
+              const audit = JSON.parse(input);
+              const vulns = audit.metadata?.vulnerabilities || {};
+              console.log('- Critical: ' + (vulns.critical || 0));
+              console.log('- High: ' + (vulns.high || 0));
+              console.log('- Moderate: ' + (vulns.moderate || 0));
+              console.log('- Low: ' + (vulns.low || 0));
+              console.log('- Info: ' + (vulns.info || 0));
+            } catch (e) {
+              console.log('- No vulnerabilities found ✅');
+            }
+          });
+        " >> $GITHUB_STEP_SUMMARY
+
+  lint-pr:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run ESLint with annotations
+      run: |
+        npm run lint -- --format=@microsoft/eslint-formatter-sarif --output-file=eslint-results.sarif || true
+
+    - name: Upload ESLint results to GitHub
+      if: always()
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: eslint-results.sarif
+        wait-for-processing: true
