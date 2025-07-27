@@ -21,7 +21,7 @@ describe('Datacore-Tasks Integration Tests', () => {
     mockApp = createMockApp();
     mockPlugin = {
       settings: {
-        datacoreQuery: 'TABLE task, status, due, priority FROM "Tasks" WHERE task != null'
+        datacoreQuery: '@task and $completed = false'
       }
     };
     mockDatacoreApi = createMockDatacoreApi();

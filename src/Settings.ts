@@ -42,7 +42,7 @@ export const DEFAULT_SETTINGS: KanbanSettings = {
             color: '#45b7d1'
         }
     ],
-    datacoreQuery: 'TABLE task, status, due, priority FROM "Tasks" WHERE task != null',
+    datacoreQuery: '@task and $completed = false',
     refreshInterval: 5000,
     cardMaxHeight: 200,
     showDueDate: true,

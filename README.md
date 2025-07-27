@@ -87,13 +87,13 @@ Tasks should be in markdown format with status tags:
 The default query fetches all tasks:
 
 ```datacore
-TABLE task, status, due, priority FROM "Tasks" WHERE task != null
+@task and $completed = false
 ```
 
 You can customize this query to:
-- Filter by specific folders: `FROM "Projects"`
-- Filter by tags: `WHERE contains(tags, "#work")`
-- Sort by priority: `SORT priority DESC`
+- Filter by tags: `@task and #work`
+- Include specific paths: `@task and path("Projects")`
+- Include completed tasks: `@task`
 
 ### Settings Options
 

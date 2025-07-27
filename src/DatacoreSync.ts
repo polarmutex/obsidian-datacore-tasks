@@ -116,15 +116,18 @@ export class DatacoreSync {
         try {
             // Use Datacore's query API
             const queryText = this.plugin.settings.datacoreQuery;
+            console.log('Executing Datacore query:', queryText);
             const query = await this.datacoreApi.query(queryText);
+            console.log('Datacore query response:', query);
             
             if (!query?.successful || !query.value) {
-                console.warn('Datacore query failed or returned no results');
+                console.warn('Datacore query failed or returned no results', query);
                 return [];
             }
 
             const tasks: TaskItem[] = [];
             const result = query.value;
+            console.log('Query result structure:', result);
 
             // Handle different result types
             if (result.type === 'table') {

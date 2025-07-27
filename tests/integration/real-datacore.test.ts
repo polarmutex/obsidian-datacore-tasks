@@ -22,7 +22,7 @@ describe('Real Datacore Integration', () => {
     
     mockPlugin = {
       settings: {
-        datacoreQuery: 'TABLE task, status, due, priority FROM "Tasks" WHERE task != null',
+        datacoreQuery: '@task and $completed = false',
         refreshInterval: 1000
       },
       registerEvent: jest.fn(),

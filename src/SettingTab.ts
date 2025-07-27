@@ -20,7 +20,7 @@ export class KanbanSettingTab extends PluginSettingTab {
             .setName('Datacore Query')
             .setDesc('The Datacore query to retrieve tasks')
             .addTextArea(text => text
-                .setPlaceholder('TABLE task, status, due, priority FROM "Tasks" WHERE task != null')
+                .setPlaceholder('@task and $completed = false')
                 .setValue(this.plugin.settings.datacoreQuery)
                 .onChange(async (value) => {
                     this.plugin.settings.datacoreQuery = value;
