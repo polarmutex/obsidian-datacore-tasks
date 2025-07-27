@@ -474,9 +474,9 @@ export class DatacoreSync {
 
     private monitorDatacoreHealth(): void {
         // Simple health check - just verify Datacore is available
-        // Complex monitoring removed to reduce overhead
-        if (!this.datacoreApi && this.plugin.settings.refreshInterval === 0) {
-            console.warn('Datacore integration may not be working properly');
+        // Uses event-driven updates instead of polling
+        if (!this.datacoreApi) {
+            console.warn('Datacore integration may not be working properly - check if Datacore plugin is installed and enabled');
         }
     }
 }

@@ -130,7 +130,7 @@ export class KanbanBoard {
             const columnElement = this.columns.get(columnId);
             if (columnElement) {
                 for (const task of columnTasks) {
-                    const card = new TaskCard(task, this.settings);
+                    const card = new TaskCard(task, this.settings, this.datacoreSync.app);
                     const cardElement = await card.render();
                     columnElement.appendChild(cardElement);
                     this.cards.set(task.id, card);

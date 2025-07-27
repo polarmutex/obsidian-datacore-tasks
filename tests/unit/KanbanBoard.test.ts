@@ -10,9 +10,10 @@ jest.mock('../../src/TaskCard');
 
 // Mock TaskCard
 jest.mock('../../src/TaskCard', () => ({
-  TaskCard: jest.fn().mockImplementation((task, settings) => ({
+  TaskCard: jest.fn().mockImplementation((task, settings, app) => ({
     task,
     settings,
+    app,
     render: jest.fn().mockResolvedValue(document.createElement('div')),
     destroy: jest.fn()
   }))

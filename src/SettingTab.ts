@@ -18,31 +18,22 @@ export class KanbanSettingTab extends PluginSettingTab {
         // Datacore Query Setting
         new Setting(containerEl)
             .setName('Datacore Query')
-            .setDesc('The Datacore query to retrieve tasks')
+            .setDesc('The Datacore query to retrieve tasks. Changes are applied immediately.')
             .addTextArea(text => text
                 .setPlaceholder('@task')
                 .setValue(this.plugin.settings.datacoreQuery)
                 .onChange(async (value) => {
                     this.plugin.settings.datacoreQuery = value;
                     await this.plugin.saveSettings();
+                    // Trigger immediate refresh when query changes
+                    this.app.workspace.trigger('datacore-kanban:refresh');
                 }));
 
-        // Refresh Interval Setting
-        new Setting(containerEl)
-            .setName('Refresh Interval (Fallback)')
-            .setDesc('Auto-refresh interval in milliseconds. Set to 0 (recommended) to use Datacore\'s intelligent change tracking instead of polling. Only used as fallback when Datacore events fail.')
-            .addText(text => text
-                .setPlaceholder('0 (use Datacore events)')
-                .setValue(this.plugin.settings.refreshInterval.toString())
-                .onChange(async (value) => {
-                    const interval = parseInt(value);
-                    if (!isNaN(interval) && interval >= 0) {
-                        this.plugin.settings.refreshInterval = interval;
-                        await this.plugin.saveSettings();
-                        // Trigger settings change event
-                        this.app.workspace.trigger('datacore-kanban:settings-changed');
-                    }
-                }));
+        // Note about automatic updates
+        containerEl.createEl('p', {
+            text: 'Updates automatically through Datacore\'s intelligent change tracking. No manual refresh needed.',
+            cls: 'setting-item-description'
+        });
 
         // Card Max Height Setting
         new Setting(containerEl)

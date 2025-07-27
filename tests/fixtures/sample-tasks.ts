@@ -178,9 +178,9 @@ export const sampleKanbanSettings = {
     }
   ],
   datacoreQuery: '@task',
-  refreshInterval: 5000,
   cardMaxHeight: 200,
   showDueDate: true,
   showPriority: true,
-  showTags: true
+  showTags: true,
+  viewPlacement: 'main'
 };

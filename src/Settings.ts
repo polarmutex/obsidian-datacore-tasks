@@ -10,7 +10,6 @@ export type ViewPlacement = 'main' | 'right-sidebar' | 'left-sidebar' | 'new-tab
 export interface KanbanSettings {
     columns: KanbanColumn[];
     datacoreQuery: string;
-    refreshInterval: number;
     cardMaxHeight: number;
     showDueDate: boolean;
     showPriority: boolean;
@@ -46,7 +45,6 @@ export const DEFAULT_SETTINGS: KanbanSettings = {
         }
     ],
     datacoreQuery: '@task',
-    refreshInterval: 0, // Disabled by default - use Datacore events
     cardMaxHeight: 200,
     showDueDate: true,
     showPriority: true,

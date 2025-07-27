@@ -1,14 +1,17 @@
+import { App } from 'obsidian';
 import { TaskItem } from './DatacoreSync';
 import { KanbanSettings } from './Settings';
 
 export class TaskCard {
     task: TaskItem;
     settings: KanbanSettings;
+    app: App;
     element: HTMLElement | null = null;
 
-    constructor(task: TaskItem, settings: KanbanSettings) {
+    constructor(task: TaskItem, settings: KanbanSettings, app: App) {
         this.task = task;
         this.settings = settings;
+        this.app = app;
     }
 
     async render(): Promise<HTMLElement> {
@@ -85,9 +88,10 @@ export class TaskCard {
         
         const openButton = actions.createEl('button', {
             cls: 'kanban-card-action',
-            attr: { 'aria-label': 'Open file' }
+            attr: { 'aria-label': 'Open task' }
         });
         openButton.innerHTML = '📝';
+        openButton.title = 'Open task';
         openButton.onclick = (e) => {
             e.stopPropagation();
             this.openTaskFile();
@@ -155,15 +159,48 @@ export class TaskCard {
 
     private async openTaskFile() {
         try {
-            const leaf = this.task.file.app.workspace.getLeaf();
+            const leaf = this.app.workspace.getLeaf();
             await leaf.openFile(this.task.file);
             
-            // Jump to the specific line if possible
-            const view = leaf.view;
-            if (view && 'editor' in view && view.editor) {
-                view.editor.setCursor({ line: this.task.line, ch: 0 });
-                view.editor.scrollIntoView({ line: this.task.line, ch: 0 });
-            }
+            // Debug logging to understand the task data
+            console.log('Task data:', {
+                id: this.task.id,
+                line: this.task.line,
+                lineType: typeof this.task.line,
+                file: this.task.file?.path
+            });
+            
+            // Wait for the editor to be ready before trying to scroll
+            setTimeout(() => {
+                try {
+                    const view = leaf.view;
+                    if (view && 'editor' in view && view.editor && 
+                        typeof this.task.line === 'number' && this.task.line >= 0) {
+                        
+                        // Create position object safely
+                        const position = { line: this.task.line, ch: 0 };
+                        console.log('Attempting to scroll to position:', position);
+                        
+                        // Set cursor first
+                        view.editor.setCursor(position);
+                        
+                        // Then scroll into view with additional validation
+                        if (view.editor.scrollIntoView) {
+                            view.editor.scrollIntoView(position);
+                        }
+                    } else {
+                        console.log('Editor not ready or invalid line:', {
+                            hasView: !!view,
+                            hasEditor: !!(view && 'editor' in view && view.editor),
+                            lineValid: typeof this.task.line === 'number' && this.task.line >= 0
+                        });
+                    }
+                } catch (scrollError) {
+                    console.warn('Could not scroll to task line:', scrollError);
+                    // File opens successfully, just without scrolling
+                }
+            }, 100); // Small delay to ensure editor is ready
+            
         } catch (error) {
             console.error('Failed to open task file:', error);
         }

@@ -8,7 +8,6 @@ export const VIEW_TYPE_KANBAN = 'datacore-kanban-view';
 export class KanbanView extends ItemView {
     plugin: DatacoreKanbanPlugin;
     kanbanBoard: KanbanBoard | null = null;
-    private refreshInterval: number | null = null;
     private eventRefs: Array<{ unsubscribe: () => void }> = [];
 
     // Type the app property properly
@@ -151,7 +150,6 @@ export class KanbanView extends ItemView {
         // Listen for settings changes
         const settingsHandler = () => {
             this.refreshBoard();
-            this.setupAutoRefresh(); // Update refresh strategy
         };
 
         this.eventRefs.push({
@@ -161,22 +159,8 @@ export class KanbanView extends ItemView {
         });
     }
 
-    private setupAutoRefresh(): void {
-        // Clear existing interval
-        if (this.refreshInterval) {
-            window.clearInterval(this.refreshInterval);
-            this.refreshInterval = null;
-        }
-
-        // Only set up auto-refresh as fallback if Datacore events fail
-        // Default behavior is now event-driven via Datacore
-        if (this.plugin.settings.refreshInterval > 0 && !this.plugin.isDatacoreReady) {
-            this.refreshInterval = window.setInterval(() => {
-                this.refreshBoard();
-            }, this.plugin.settings.refreshInterval);
-        } else if (this.plugin.settings.refreshInterval > 0) {
-        }
-    }
+    // Automatic refresh is now handled entirely through Datacore events
+    // No manual polling needed - Datacore provides real-time updates
 
     private async refreshBoard(): Promise<void> {
         if (!this.kanbanBoard) return;
@@ -227,10 +211,7 @@ export class KanbanView extends ItemView {
     async onClose(): Promise<void> {
         try {
             // Cleanup auto-refresh
-            if (this.refreshInterval) {
-                window.clearInterval(this.refreshInterval);
-                this.refreshInterval = null;
-            }
+            // Event-driven updates only - no intervals to clear
 
             // Cleanup event listeners
             this.eventRefs.forEach(ref => ref.unsubscribe());
