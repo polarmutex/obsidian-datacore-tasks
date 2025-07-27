@@ -69,13 +69,21 @@ export class DatacoreSync {
     private setupEventListeners(): void {
         if (!this.datacoreApi) return;
 
-        // Listen for Datacore index changes
-        const indexRef = this.datacoreApi.index.on('update', () => {
-            this.debounceRefresh();
-        });
-        
-        if (indexRef) {
-            this.eventRefs.push(indexRef);
+        // Listen for Datacore index changes (with safety check)
+        if (this.datacoreApi.index && typeof this.datacoreApi.index.on === 'function') {
+            try {
+                const indexRef = this.datacoreApi.index.on('update', () => {
+                    this.debounceRefresh();
+                });
+                
+                if (indexRef) {
+                    this.eventRefs.push(indexRef);
+                }
+            } catch (error) {
+                console.warn('Failed to setup Datacore index listener:', error);
+            }
+        } else {
+            console.warn('Datacore API does not have index.on method available');
         }
 
         // Listen for file changes as backup
@@ -300,10 +308,14 @@ export class DatacoreSync {
     cleanup(): void {
         // Clear event listeners
         this.eventRefs.forEach(ref => {
-            if ('off' in ref) {
-                (ref as any).off();
-            } else {
-                this.app.vault.offref(ref);
+            try {
+                if (ref && typeof ref === 'object' && 'off' in ref && typeof (ref as any).off === 'function') {
+                    (ref as any).off();
+                } else if (ref) {
+                    this.app.vault.offref(ref);
+                }
+            } catch (error) {
+                console.warn('Failed to cleanup event listener:', error);
             }
         });
         this.eventRefs = [];
