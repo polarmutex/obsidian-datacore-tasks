@@ -6,11 +6,15 @@ import { DatacoreSync } from './DatacoreSync';
 import { TagManager } from './TagManager';
 import { KanbanSettings, DEFAULT_SETTINGS } from './Settings';
 import { KanbanSettingTab } from './SettingTab';
+import { MarkdownProcessor } from './api/MarkdownProcessor';
+import { TasksPluginBridge } from './integrations/TasksPluginBridge';
 
 export default class DatacoreKanbanPlugin extends Plugin {
     settings: KanbanSettings;
     datacoreSync: DatacoreSync;
     tagManager: TagManager;
+    markdownProcessor: MarkdownProcessor;
+    tasksPluginBridge: TasksPluginBridge;
     
     // Type the app property properly
     declare app: ObsidianApp;
@@ -25,6 +29,13 @@ export default class DatacoreKanbanPlugin extends Plugin {
             // Initialize core services
             this.datacoreSync = new DatacoreSync(this.app, this);
             this.tagManager = new TagManager(this.app, this.datacoreSync);
+            
+            // Initialize new datacore-native components
+            this.markdownProcessor = new MarkdownProcessor(this);
+            this.tasksPluginBridge = new TasksPluginBridge(this.app);
+            
+            // Register markdown code block processor
+            this.markdownProcessor.registerCodeBlockProcessor();
 
             // Register both legacy and JavaScript kanban views
             this.registerView(
@@ -78,6 +89,16 @@ export default class DatacoreKanbanPlugin extends Plugin {
             });
             console.log('JavaScript Kanban Board command registered successfully');
 
+            // Add command for refreshing all datacore views
+            this.addCommand({
+                id: 'refresh-datacore-kanban-views',
+                name: 'Refresh All Datacore Kanban Views',
+                icon: 'refresh-cw',
+                callback: async () => {
+                    await this.markdownProcessor.refreshAllViews();
+                }
+            });
+
             // Add command to refresh board
             this.addCommand({
                 id: 'refresh-kanban-board',
@@ -113,6 +134,9 @@ export default class DatacoreKanbanPlugin extends Plugin {
         console.log('Unloading Datacore Kanban Plugin');
         
         try {
+            // Cleanup new components
+            this.markdownProcessor?.destroyAllViews();
+            
             // Cleanup services
             this.datacoreSync?.cleanup();
             
@@ -316,5 +340,24 @@ export default class DatacoreKanbanPlugin extends Plugin {
     // Helper method to get the Datacore API
     get datacoreApi() {
         return this.datacoreSync?.api;
+    }
+
+    // Helper method to get Tasks plugin bridge
+    get tasksPlugin(): TasksPluginBridge {
+        return this.tasksPluginBridge;
+    }
+
+    // Public API for other plugins
+    public getAPI() {
+        return {
+            createKanbanView: (container: HTMLElement, config: any) => {
+                // This would need datacore context - implementation depends on usage
+                console.log('Public API: createKanbanView called');
+                return null;
+            },
+            refreshAllViews: () => this.markdownProcessor.refreshAllViews(),
+            getActiveViews: () => this.markdownProcessor.getActiveViews(),
+            isDatacoreReady: () => this.isDatacoreReady
+        };
     }
 }

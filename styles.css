@@ -568,3 +568,6 @@
 .kanban-column-content::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-bg-hover);
 }
+
+/* Import new datacore kanban styles */
+@import url("src/styles/datacore-kanban.css");

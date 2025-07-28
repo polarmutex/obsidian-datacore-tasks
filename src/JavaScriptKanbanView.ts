@@ -1,6 +1,7 @@
 import { ItemView, WorkspaceLeaf } from 'obsidian';
 import type { App as ObsidianApp } from 'obsidian-typings';
 import DatacoreKanbanPlugin from './main';
+import { SerializationUtils } from './utils/SerializationUtils';
 
 export const VIEW_TYPE_JS_KANBAN = 'datacore-js-kanban-view';
 
@@ -243,7 +244,11 @@ export class JavaScriptKanbanView extends ItemView {
                     return;
                 }
                 
-                const task = JSON.parse(taskData);
+                const task = SerializationUtils.restoreFromDragData(taskData);
+                if (!task) {
+                    console.error('Failed to restore task from drag data');
+                    return;
+                }
                 console.log('Dropping task:', this.extractTaskText(task), 'into column:', column.name);
                 
                 // Move task to new column
@@ -348,8 +353,8 @@ export class JavaScriptKanbanView extends ItemView {
             cls: 'js-kanban-task-card',
             attr: {
                 'draggable': 'true',
-                'data-task-id': this.getTaskId(task),
-                'data-task-data': JSON.stringify(task)
+                'data-task-id': SerializationUtils.generateTaskId(task),
+                'data-task-data': SerializationUtils.createDragData(task)
             }
         });
         
@@ -427,8 +432,8 @@ export class JavaScriptKanbanView extends ItemView {
             }
             
             e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', this.getTaskId(task));
-            e.dataTransfer.setData('application/json', JSON.stringify(task));
+            e.dataTransfer.setData('text/plain', SerializationUtils.generateTaskId(task));
+            e.dataTransfer.setData('application/json', SerializationUtils.createDragData(task));
             
             card.classList.add('js-dragging');
             console.log('Drag started successfully for task:', this.extractTaskText(task));
@@ -493,12 +498,6 @@ export class JavaScriptKanbanView extends ItemView {
         return matches || [];
     }
 
-    private getTaskId(task: any): string {
-        // Create a unique ID for the task
-        const filePath = this.extractFilePath(task);
-        const taskText = this.extractTaskText(task);
-        return `${filePath}:${taskText.substring(0, 50)}`;
-    }
 
     private filterTasks(searchTerm: string, filter: string): void {
         // Implementation for filtering tasks
