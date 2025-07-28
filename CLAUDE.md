@@ -79,25 +79,6 @@ This plugin provides a dynamic kanban board for Obsidian that integrates with Da
 - **Workspace API**: View management and leaf handling
 - **Vault API**: File system integration for task files
 
-### Technical Architecture
-
-#### Core Components
-
-- **DatacoreSync**: Integration layer with Datacore API
-- **KanbanView**: Main UI component (ItemView)
-- **KanbanBoard**: Board rendering and interaction logic
-- **TaskCard**: Individual task card components
-- **TagManager**: Tag update and file modification logic
-
-#### Data Flow
-
-1. **Query Execution**: Datacore API queries return task data
-2. **Data Parsing**: TaskItem objects created from query results
-3. **UI Rendering**: KanbanBoard renders cards in columns
-4. **User Interaction**: Drag & drop triggers tag updates
-5. **File Updates**: TagManager modifies source files
-6. **Event Propagation**: Datacore events trigger UI refresh
-
 ### Development & Contribution
 
 #### Build Process
@@ -116,4 +97,3 @@ npm test       # Run test suite
 - **Mock System**: Comprehensive mocking for isolated testing
 
 This plugin demonstrates effective integration between Obsidian's plugin ecosystem and external data processing libraries, providing a seamless task management experience through web-based query languages and real-time updates.
-
